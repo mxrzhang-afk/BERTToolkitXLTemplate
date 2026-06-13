@@ -1,0 +1,33 @@
+tool_id: china_exposure_map
+required_sheets:
+  - Control
+  - Parameters
+  - Input_Data
+  - Output
+input_data:
+  required_columns:
+    - Province
+    - Lat
+    - Lon
+    - EQ_New
+    - EQ_Old
+    - WS_New
+    - WS_Old
+parameters:
+  required_names:
+    - EQ_legend
+    - WS_legend
+    - EQ_break
+    - WS_break
+    - EQ_label
+    - WS_label
+    - EQ_colors
+    - WS_colors
+    - EQ_highlight_provinces
+    - WS_highlight_provinces
+    - EQ_bar_scale
+    - WS_bar_scale
+    - crop_geometry
+    - output_width
+    - output_height
+    - dpi

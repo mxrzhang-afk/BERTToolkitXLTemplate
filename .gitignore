@@ -1,0 +1,15 @@
+.DS_Store
+**/.DS_Store
+
+# Runtime outputs
+_BERTToolkitTemp/
+**/_BERTToolkitTemp/
+*.log
+
+# Local workbook recovery files
+*.bak
+*.bak_*
+*.corrupt_*
+*.tmp
+~$*
+

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui">
+  <ribbon>
+    <tabs>
+      <tab id="greToolsTab" label="GRe Tool Ribbon">
+        <group id="greActionsGroup" label="Actions">
+          <button id="greGatherButton" label="Gather" size="large" imageMso="DatabaseInsert" onAction="GRe_RibbonGather"/>
+          <button id="greUpdateButton" label="Update" size="large" imageMso="RefreshAll" onAction="GRe_RibbonUpdate"/>
+          <button id="greBuildButton" label="Build" size="large" imageMso="FileSaveAs" onAction="GRe_RibbonBuild"/>
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>

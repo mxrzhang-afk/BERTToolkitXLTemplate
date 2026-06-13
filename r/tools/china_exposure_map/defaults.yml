@@ -1,0 +1,67 @@
+EQ_legend: "EQ Exposure@Mar.2026"
+EQ_break:
+  - "-Inf"
+  - 1000000000
+  - 2000000000
+  - 3000000000
+  - 5000000000
+  - 35000000000
+EQ_label:
+  - "0 bio - 1 bio"
+  - "1 bio - 2 bio"
+  - "2 bio - 3 bio"
+  - "3 bio - 5 bio"
+  - "5 bio - 35 bio"
+EQ_colors:
+  - "#FFFFB3"
+  - "#FECC5C"
+  - "#FD8D3C"
+  - "#F03B20"
+  - "#BD0026"
+EQ_highlight_provinces:
+  - Beijing
+  - Gansu
+  - Hainan
+  - Inner Mongolia
+  - Ningxia
+  - Shanxi
+  - Sichuan
+  - Tianjin
+  - Xinjiang
+  - Yunnan
+EQ_bar_scale: 0.000009
+
+WS_legend: "WS Exposure@Mar.2026"
+WS_break:
+  - "-Inf"
+  - 1000000000
+  - 2000000000
+  - 5000000000
+  - 13000000000
+  - 137000000000
+WS_label:
+  - "0 bio - 1 bio"
+  - "1 bio - 2 bio"
+  - "2 bio - 5 bio"
+  - "5 bio - 13 bio"
+  - "13 bio - 137 bio"
+WS_colors:
+  - "#EFF3FF"
+  - "#BDD7E7"
+  - "#6BAED6"
+  - "#3182BD"
+  - "#08519C"
+WS_highlight_provinces:
+  - Fujian
+  - Guangdong
+  - Guangxi
+  - Hainan
+  - Jiangxi
+  - Shanghai
+  - Zhejiang
+WS_bar_scale: 0.0000025
+
+crop_geometry: "600x890+1670+1260"
+output_width: 10
+output_height: 7.5
+dpi: 300

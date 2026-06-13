@@ -1,0 +1,65 @@
+tool_id: xl_pricing_tool
+template: excel/templates/Template_XOL_Pricing_Tool.xlsm
+objective_markers:
+  - "<xl pricing>"
+  - "<xl pricing tool>"
+  - "<xol pricing>"
+actions:
+  gather:
+    status: generic_placeholder
+  update:
+    status: generic_placeholder
+  build:
+    status: generic_placeholder
+  gnpi_gather:
+    status: not_defined_when_gather_from_blank
+  gnpi_update:
+    status: implemented
+  gnpi_build:
+    status: not_defined
+tabs:
+  Input_GNPI:
+    marker: "<<GNPI>>"
+    gather:
+      status: not_defined_when_gather_from_blank
+    update:
+      function: xl_pricing_tool_gnpi_update
+      outputs:
+        - _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_level_data.csv
+        - _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_lob_comparison_data.csv
+        - _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_chart_config.csv
+        - _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_level_chart.png
+        - _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_lob_comparison_chart.png
+    build:
+      status: not_defined
+    controls:
+      start_year: Input_GNPI!L19
+      level_chart_title: Input_GNPI!L20
+      composition_chart_title: Input_GNPI!L21
+      actual_color: Input_GNPI!L22
+      revised_color: Input_GNPI!L23
+      estimate_color: Input_GNPI!L24
+      label_color: Input_GNPI!L25
+      grid_color: Input_GNPI!L26
+      png_width: Input_GNPI!L27
+      png_height: Input_GNPI!L28
+      font_scale: Input_GNPI!L29
+      excel_image_width: Input_GNPI!L30
+      level_image_height: Input_GNPI!L31
+      composition_image_height: Input_GNPI!L32
+      level_chart_anchor: Input_GNPI!L34
+      composition_chart_anchor: Input_GNPI!L35
+      lob_sequence_start: Input_GNPI!L39
+required_sheets:
+  - Control_Module
+  - Input_GNPI
+  - Input_Agg
+  - Input_Layers
+  - Input_Portfolio
+  - Portfolio
+  - Risk Loss Fitting
+  - PriceSelection_Risk
+  - PriceTable_Risk
+  - Input - Cat ELTs
+  - PriceSelection_CAT
+  - PriceTable_CAT

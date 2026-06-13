@@ -1,0 +1,38 @@
+toolkit:
+  id: BERTToolkit
+  version: 0.1.0
+  windows_root: "C:/CompanyTools/BERTToolkit"
+  workbook_run_root: "_BERTToolkitTemp"
+  default_output_policy: "Create temporary run folders beside the calling workbook, not under the toolkit install folder."
+  toolkit_log_root: "logs"
+
+r:
+  required_packages:
+    - sf
+    - ggplot2
+    - dplyr
+    - magick
+    - grid
+    - readxl
+    - openxlsx
+    - yaml
+
+tools:
+  china_exposure_map:
+    enabled: true
+    module: "r/tools/china_exposure_map/tool.R"
+    schema: "r/tools/china_exposure_map/schema.yml"
+    defaults: "r/tools/china_exposure_map/defaults.yml"
+    template: "excel/templates/Template_China_Exposure_Mapping.xlsm"
+  xl_pricing_tool:
+    enabled: true
+    module: "r/tools/xl_pricing_tool/tool.R"
+    schema: "r/tools/xl_pricing_tool/schema.yml"
+    defaults: "r/tools/xl_pricing_tool/defaults.yml"
+    template: "excel/templates/Template_XOL_Pricing_Tool.xlsm"
+  curve_fit_risk:
+    enabled: false
+    module: "r/tools/curve_fit_risk/tool.R"
+    schema: ""
+    defaults: ""
+    template: ""
