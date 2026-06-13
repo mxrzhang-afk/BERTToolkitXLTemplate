@@ -61,27 +61,32 @@ Default behavior:
 - `build`: no standalone output currently defined.
 
 `update` reads the flexible table starting at `B12:I` and stops after the
-meaningful input rows end. The right-side settings block controls chart
-presentation:
+meaningful input rows end. The right-side user inputs control chart
+presentation. `Start_Year` is read from `L18`, or from a label/value setting
+named `Start Year` / `Start_Year`. The LOB stack sequence starts at `L39`.
+
+The chart aesthetics panel starts at `AA10`, with labels in column `AA` and
+editable values in column `AB`. The R reader also supports the same labels
+elsewhere on the sheet as a fallback. Supported labels include:
 
 ```text
-L19  Start Year
-L20  Level Chart Title
-L21  Composition Chart Title
-L22  Actual Color
-L23  Revised Color
-L24  Estimate Color
-L25  Label Color
-L26  Grid Color
-L27  PNG Width
-L28  PNG Height
-L29  Font Scale
-L30  Excel Image Width
-L31  Level Image Height
-L32  Composition Image Height
-L34  Level Chart Anchor
-L35  Composition Chart Anchor
-L39  LOB Sequence Start
+Level Chart Title
+Level Chart Subtitle
+Composition Chart Title
+Composition Chart Subtitle
+Actual Color
+Revised Color
+Estimate Color
+Label Color
+Grid Color
+PNG Width
+PNG Height
+Font Scale
+Label Font Size
+Axis Font Size
+Title Font Size
+LOB Color 1
+LOB Color 2
 ```
 
 Generated files:
@@ -95,7 +100,9 @@ _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_lob_comparison_chart.png
 ```
 
 The first chart shows separate columns for each year/type section, such as
-`2025 Revised`, `2025 Estimate`, and `2026 Estimate`. The second chart is a
-stacked percentage LOB composition chart across those same year/type sections
-from the configured start year. Charts are rendered by R as PNG images and then
-inserted into the workbook by VBA at the configured anchor cells.
+`2025 Estimate`, `2025 Revised`, and `2026 Estimate`. The renewal-year section
+keeps the required order, without extra highlight outlines. The second chart is
+a stacked percentage LOB composition chart across those same year/type sections
+from the configured start year, with stack order controlled by the `New
+Sequence` list. Charts are rendered by R with `ggplot2` as PNG images and then
+inserted into the workbook by VBA.
