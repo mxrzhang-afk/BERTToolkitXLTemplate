@@ -28,8 +28,10 @@ tabs:
         - _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_level_data.csv
         - _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_lob_comparison_data.csv
         - _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_chart_config.csv
-        - _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_level_chart.png
-        - _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_lob_comparison_chart.png
+      excel_post_process:
+        function: BTK_RefreshGNPINativeCharts
+        helper_sheet: _BTK_GNPI_Data
+        chart_mode: native_excel
     build:
       status: not_defined
     controls:

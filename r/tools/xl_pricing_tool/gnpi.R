@@ -66,21 +66,10 @@ xl_pricing_tool_gnpi_update <- function(workbook_path, output_dir = NULL, contex
   level_file <- file.path(gnpi_dir, "gnpi_level_data.csv")
   composition_file <- file.path(gnpi_dir, "gnpi_lob_comparison_data.csv")
   config_file <- file.path(gnpi_dir, "gnpi_chart_config.csv")
-  level_chart_file <- file.path(gnpi_dir, "gnpi_level_chart.png")
-  composition_chart_file <- file.path(gnpi_dir, "gnpi_lob_comparison_chart.png")
 
   utils::write.csv(level_data, level_file, row.names = FALSE, na = "")
   utils::write.csv(composition_data, composition_file, row.names = FALSE, na = "")
   utils::write.csv(config_data, config_file, row.names = FALSE, na = "")
-  xl_pricing_tool_render_gnpi_charts(
-    level_data = level_data,
-    composition_data = composition_data,
-    level_chart_file = level_chart_file,
-    composition_chart_file = composition_chart_file,
-    start_year = start_year,
-    renewal_year = renewal_year,
-    chart_options = chart_options
-  )
 
   paste(
     "GNPI update completed.",
@@ -91,9 +80,7 @@ xl_pricing_tool_gnpi_update <- function(workbook_path, output_dir = NULL, contex
     sprintf("Chart 1 data: %s", level_file),
     sprintf("Chart 2 data: %s", composition_file),
     sprintf("Chart config: %s", config_file),
-    sprintf("Chart 1 image: %s", level_chart_file),
-    sprintf("Chart 2 image: %s", composition_chart_file),
-    "R chart images are handled by the VBA client after BERT returns.",
+    "Native Excel charts are handled by the VBA client after BERT returns.",
     sep = vb_newline()
   )
 }

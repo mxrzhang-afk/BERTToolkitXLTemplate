@@ -95,8 +95,6 @@ Generated files:
 _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_level_data.csv
 _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_lob_comparison_data.csv
 _BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_chart_config.csv
-_BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_level_chart.png
-_BERTToolkitTemp/xl_pricing_tool/gnpi/gnpi_lob_comparison_chart.png
 ```
 
 The first chart shows separate columns for each year/type section, such as
@@ -104,5 +102,8 @@ The first chart shows separate columns for each year/type section, such as
 keeps the required order, without extra highlight outlines. The second chart is
 a stacked percentage LOB composition chart across those same year/type sections
 from the configured start year, with stack order controlled by the `New
-Sequence` list. Charts are rendered by R with `ggplot2` as PNG images and then
-inserted into the workbook by VBA.
+Sequence` list.
+
+On the native Excel chart experiment branch, R writes chart-ready CSV and config
+files only. VBA imports those CSVs into the hidden `_BTK_GNPI_Data` sheet and
+creates native Excel chart objects on `Input_GNPI`.
