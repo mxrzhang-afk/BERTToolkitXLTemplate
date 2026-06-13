@@ -106,3 +106,77 @@ a stacked percentage LOB composition chart across those same year/type sections
 from the configured start year, with stack order controlled by the `New
 Sequence` list. Charts are rendered by R with `ggplot2` as PNG images and then
 inserted into the workbook by VBA.
+
+## Tab: Input_Agg
+
+Marker:
+
+```text
+<<Agg>>
+```
+
+Planned action:
+
+```text
+agg_update
+```
+
+Default behavior:
+
+- `gather`: not defined when `Gather From` is blank.
+- `update`: normalize aggregate inputs into the R Output block.
+- `build`: no standalone output currently defined.
+
+`update` will read the flexible aggregate input table beginning at
+`Input_Agg!B12`. The expected columns are:
+
+```text
+Peril | Province | <year columns>
+```
+
+Only `EQ` and `WF` are expected perils for this action. Year columns should be
+read from row `12` so the action does not depend on a fixed start or end year.
+
+The keyzone lookup table is read from `Control_Module!K15:O...`:
+
+```text
+Province | Peril | AIR | RMS | Blended
+```
+
+Flag handling:
+
+- `1` means include the province/peril row in that method.
+- blank or `0` means exclude it.
+- `Blended` is explicit only; it is not derived from AIR/RMS flags.
+
+The R action will produce a CSV handoff file:
+
+```text
+_BERTToolkitTemp/xl_pricing_tool/agg/agg_output.csv
+```
+
+The CSV schema is:
+
+```text
+Peril | TreatyYear | Method | AggSum
+```
+
+Methods:
+
+```text
+Nationwide
+AIR
+RMS
+Blended
+```
+
+VBA will use the CSV handoff to overwrite `Input_Agg!AH18:AK...`, preserving
+the existing Excel formulas in the `U:Y` summary area. The summary formulas are
+expected to use:
+
+```text
+Prior   = RNL_Year - 2
+Current = RNL_Year - 1
+```
+
+No charts are planned for this tab.

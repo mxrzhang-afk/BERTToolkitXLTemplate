@@ -17,6 +17,12 @@ actions:
     status: implemented
   gnpi_build:
     status: not_defined
+  agg_gather:
+    status: not_defined_when_gather_from_blank
+  agg_update:
+    status: planned
+  agg_build:
+    status: not_defined
 tabs:
   Input_GNPI:
     marker: "<<GNPI>>"
@@ -53,6 +59,50 @@ tabs:
       title_font_size: label "Title Font Size"
       lob_palette: labels "LOB Color 1" through "LOB Color 12"
       lob_sequence_start: Input_GNPI!L39
+  Input_Agg:
+    marker: "<<Agg>>"
+    gather:
+      status: not_defined_when_gather_from_blank
+    update:
+      function: xl_pricing_tool_agg_update
+      status: planned
+      outputs:
+        - _BERTToolkitTemp/xl_pricing_tool/agg/agg_output.csv
+      excel_post_process:
+        function: BTK_RefreshAggOutput
+        target_range: Input_Agg!AH18:AK...
+        mode: overwrite_output_block
+    build:
+      status: not_defined
+    inputs:
+      aggregate_table:
+        range: Input_Agg!B12:S...
+        required_columns:
+          - Peril
+          - Province
+        year_columns: row 12 numeric year headers
+      keyzone_table:
+        range: Control_Module!K15:O...
+        columns:
+          - Province
+          - Peril
+          - AIR
+          - RMS
+          - Blended
+    rules:
+      supported_perils:
+        - EQ
+        - WF
+      methods:
+        - Nationwide
+        - AIR
+        - RMS
+        - Blended
+      keyzone_flags: "1 includes; blank or zero excludes"
+      blended: explicit flag only
+      prior_year: RNL_Year - 2
+      current_year: RNL_Year - 1
+      charts: none
 required_sheets:
   - Control_Module
   - Input_GNPI
