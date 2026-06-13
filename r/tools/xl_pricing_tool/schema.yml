@@ -33,22 +33,25 @@ tabs:
     build:
       status: not_defined
     controls:
-      start_year: Input_GNPI!L19
-      level_chart_title: Input_GNPI!L20
-      composition_chart_title: Input_GNPI!L21
-      actual_color: Input_GNPI!L22
-      revised_color: Input_GNPI!L23
-      estimate_color: Input_GNPI!L24
-      label_color: Input_GNPI!L25
-      grid_color: Input_GNPI!L26
-      png_width: Input_GNPI!L27
-      png_height: Input_GNPI!L28
-      font_scale: Input_GNPI!L29
-      excel_image_width: Input_GNPI!L30
-      level_image_height: Input_GNPI!L31
-      composition_image_height: Input_GNPI!L32
-      level_chart_anchor: Input_GNPI!L34
-      composition_chart_anchor: Input_GNPI!L35
+      start_year: Input_GNPI!L18
+      start_year_label: Input_GNPI!K17
+      aesthetics_panel: Input_GNPI!AA10:AB34
+      level_chart_title: label "Level Chart Title" or "Chart 1 Title"
+      level_chart_subtitle: label "Level Chart Subtitle" or "Chart 1 Subtitle"
+      composition_chart_title: label "Composition Chart Title" or "Chart 2 Title"
+      composition_chart_subtitle: label "Composition Chart Subtitle" or "Chart 2 Subtitle"
+      actual_color: label "Actual Color"
+      revised_color: label "Revised Color"
+      estimate_color: label "Estimate Color"
+      label_color: label "Label Color" or "Font Color"
+      grid_color: label "Grid Color"
+      png_width: label "PNG Width" or "Chart Width"
+      png_height: label "PNG Height" or "Chart Height"
+      font_scale: label "Font Scale"
+      label_font_size: label "Label Font Size" or "Data Label Font Size"
+      axis_font_size: label "Axis Font Size"
+      title_font_size: label "Title Font Size"
+      lob_palette: labels "LOB Color 1" through "LOB Color 12"
       lob_sequence_start: Input_GNPI!L39
 required_sheets:
   - Control_Module
