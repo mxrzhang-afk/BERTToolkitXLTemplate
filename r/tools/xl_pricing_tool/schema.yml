@@ -20,7 +20,7 @@ actions:
   agg_gather:
     status: not_defined_when_gather_from_blank
   agg_update:
-    status: planned
+    status: implemented
   agg_build:
     status: not_defined
 tabs:
@@ -65,7 +65,7 @@ tabs:
       status: not_defined_when_gather_from_blank
     update:
       function: xl_pricing_tool_agg_update
-      status: planned
+      status: implemented
       outputs:
         - _BERTToolkitTemp/xl_pricing_tool/agg/agg_output.csv
       excel_post_process:

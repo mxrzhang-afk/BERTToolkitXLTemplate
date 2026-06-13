@@ -195,6 +195,52 @@ Private Function BTK_NumberFromSetting(ByVal ws As Worksheet, ByVal settingCell 
     End If
 End Function
 
+Private Sub BTK_LoadCsvToRange(ByVal csvPath As String, ByVal destination As Range)
+    If Len(Dir(csvPath)) = 0 Then
+        Err.Raise vbObjectError + 5113, BTK_SOURCE, "CSV output was not created: " & csvPath
+    End If
+
+    With destination.Worksheet.QueryTables.Add(Connection:="TEXT;" & csvPath, Destination:=destination)
+        .TextFileParseType = xlDelimited
+        .TextFileCommaDelimiter = True
+        .TextFileTextQualifier = xlTextQualifierDoubleQuote
+        .AdjustColumnWidth = False
+        .Refresh BackgroundQuery:=False
+        .Delete
+    End With
+End Sub
+
+Private Function BTK_RefreshAggOutput(ByVal outputFolder As String) As String
+    Dim ws As Worksheet
+    Dim aggFolder As String
+    Dim outputPath As String
+    Dim lastRow As Long
+
+    If Len(outputFolder) = 0 Then
+        BTK_RefreshAggOutput = "Aggregate output refresh skipped: could not find output folder in R result."
+        Exit Function
+    End If
+
+    outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
+    If Right$(outputFolder, 1) <> Application.PathSeparator Then
+        outputFolder = outputFolder & Application.PathSeparator
+    End If
+
+    aggFolder = outputFolder & "agg" & Application.PathSeparator
+    outputPath = aggFolder & "agg_output.csv"
+
+    Set ws = ThisWorkbook.Worksheets("Input_Agg")
+    lastRow = ws.Cells(ws.Rows.Count, "AH").End(xlUp).Row
+    If lastRow < 18 Then
+        lastRow = 18
+    End If
+
+    ws.Range("AH18:AK" & lastRow).ClearContents
+    BTK_LoadCsvToRange outputPath, ws.Range("AH18")
+
+    BTK_RefreshAggOutput = "Aggregate R output refreshed on Input_Agg."
+End Function
+
 Private Function BTK_RefreshGNPICharts(ByVal outputFolder As String) As String
     Dim ws As Worksheet
     Dim gnpiFolder As String
@@ -274,6 +320,8 @@ Private Function GRe_ToolIdForObjective(ByVal objectiveText As String) As String
             GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "gnpi"
             GRe_ToolIdForObjective = "xl_pricing_tool"
+        Case "agg"
+            GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "curve fit risk"
             GRe_ToolIdForObjective = "curve_fit_risk"
         Case Else
@@ -285,6 +333,8 @@ Private Function GRe_ActionForObjective(ByVal objectiveText As String, ByVal act
     Select Case GRe_ObjectiveKey(objectiveText)
         Case "gnpi"
             GRe_ActionForObjective = "gnpi_" & LCase$(action)
+        Case "agg"
+            GRe_ActionForObjective = "agg_" & LCase$(action)
         Case Else
             GRe_ActionForObjective = LCase$(action)
     End Select
@@ -334,6 +384,12 @@ Private Sub GRe_HandleResult(ByVal toolId As String, ByVal action As String, ByV
     If refreshWorkbook And toolId = "xl_pricing_tool" And action = "gnpi_update" And InStr(1, resultText, "GNPI update completed.", vbTextCompare) > 0 Then
         outputFolder = BTK_OutputFolderFromResult(resultText)
         resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshGNPICharts(outputFolder)
+        ThisWorkbook.Save
+    End If
+
+    If refreshWorkbook And toolId = "xl_pricing_tool" And action = "agg_update" And InStr(1, resultText, "Aggregate update completed.", vbTextCompare) > 0 Then
+        outputFolder = BTK_OutputFolderFromResult(resultText)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshAggOutput(outputFolder)
         ThisWorkbook.Save
     End If
 

@@ -115,7 +115,7 @@ Marker:
 <<Agg>>
 ```
 
-Planned action:
+Implemented action:
 
 ```text
 agg_update

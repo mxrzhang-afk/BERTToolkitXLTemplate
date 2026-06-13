@@ -2,6 +2,8 @@
 
 Branch: `aggregates_input`
 
+Status: implemented in R/VBA source; pending Windows Excel ribbon validation.
+
 ## Goal
 
 Implement the `Input_Agg` tab update action for the XL pricing tool.
@@ -106,7 +108,7 @@ Peril | Province | TreatyYear | Agg
 
 VBA should own workbook mutation for this action.
 
-Planned VBA function:
+VBA function:
 
 ```text
 BTK_RefreshAggOutput(outputFolder)
@@ -154,16 +156,49 @@ Excel validation:
 
 ## Implementation Milestones
 
-1. Register `agg_gather`, `agg_update`, and `agg_build` in `r/registry.R`.
-2. Extend VBA action mapping so `<<Agg>>` maps to `xl_pricing_tool` and
+1. Done: register `agg_gather`, `agg_update`, and `agg_build` in `r/registry.R`.
+2. Done: extend VBA action mapping so `<<Agg>>` maps to `xl_pricing_tool` and
    `agg_update`.
-3. Add `r/tools/xl_pricing_tool/agg.R` with read, validate, transform, summarize,
-   and CSV write functions.
-4. Source `agg.R` from `r/registry.R`.
-5. Add `BTK_RefreshAggOutput` in `excel/vba/BERTToolkitClient.bas`.
-6. Add R smoke tests using the current template.
-7. Validate in the Windows VM through the ribbon.
-8. Commit only after workbook-side validation passes.
+3. Done: add `r/tools/xl_pricing_tool/agg.R` with read, validate, transform,
+   summarize, and CSV write functions.
+4. Done: source `agg.R` from `r/registry.R`.
+5. Done: add `BTK_RefreshAggOutput` in `excel/vba/BERTToolkitClient.bas`.
+6. Done: run R smoke tests using the current template.
+7. Pending: validate in the Windows VM through the ribbon.
+8. Pending: commit workbook-side changes only if a workbook binary edit is made
+   and validated in Excel.
+
+## Current R Validation Result
+
+The R dispatcher path has been tested with:
+
+```text
+BTK.DispatchTool("xl_pricing_tool", "agg_update", <template>, <output_dir>)
+```
+
+Observed output:
+
+```text
+Input rows: 992
+Output rows: 128
+```
+
+The output row count matches:
+
+```text
+2 perils x 16 treaty years x 4 methods = 128 rows
+```
+
+Sample reconciliation for `EQ` / `2025`:
+
+```text
+Nationwide = 592,830,404,568
+AIR        = 151,122,249,306
+RMS        = 194,921,464,664
+Blended    = 281,989,877,521
+```
+
+These values reconcile to the raw aggregate input and explicit keyzone flags.
 
 ## Safety Rules
 
