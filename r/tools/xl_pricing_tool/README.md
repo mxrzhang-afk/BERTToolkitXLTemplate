@@ -40,6 +40,12 @@ Tab-specific actions are registered separately under the same tool ID. For
 example, `Input_GNPI` maps the ribbon Update command to `gnpi_update`.
 The actions are intentionally separate from `china_exposure_map`.
 
+The shared VBA dispatcher passes the active worksheet name to R. Implemented
+tab actions read from that active worksheet and refresh outputs back to the same
+worksheet, so copied tabs can be renamed and run independently as long as the
+`A1` marker and required layout are preserved. The original template tab names
+remain fallback defaults for direct R calls that do not provide an active sheet.
+
 By default, outputs are written to a stable workbook-local folder:
 
 ```text

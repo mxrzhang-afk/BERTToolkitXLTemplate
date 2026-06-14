@@ -4,6 +4,9 @@ objective_markers:
   - "<xl pricing>"
   - "<xl pricing tool>"
   - "<xol pricing>"
+dispatch:
+  active_sheet: "VBA passes the active worksheet name to R as context$active_sheet."
+  dynamic_tabs: "Implemented tab actions read from and refresh back to the active worksheet. Original template tab names are fallback defaults for direct R calls without active_sheet."
 actions:
   gather:
     status: generic_placeholder

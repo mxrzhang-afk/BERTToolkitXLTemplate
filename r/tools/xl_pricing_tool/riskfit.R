@@ -12,7 +12,7 @@ xl_pricing_tool_riskfit_update <- function(workbook_path, output_dir = NULL, con
   riskfit_dir <- file.path(output_dir, "riskfit")
   dir.create(riskfit_dir, recursive = TRUE, showWarnings = FALSE)
 
-  sheet <- xl_pricing_tool_read_sheet(workbook_path, "Risk Loss Fitting")
+  sheet <- xl_pricing_tool_action_sheet(workbook_path, context, "Risk Loss Fitting")
   loss_input <- xl_pricing_tool_riskfit_read_loss_input(sheet)
   chart_config <- xl_pricing_tool_riskfit_read_loss_comparison_config(sheet)
   layers <- xl_pricing_tool_riskfit_read_loss_layers(sheet)
@@ -97,7 +97,12 @@ xl_pricing_tool_riskfit_read_loss_input <- function(sheet) {
     trimws(xl_pricing_tool_cell_value(sheet, paste0(xl_pricing_tool_col_name(col), 12)))
   }, character(1))
   if (!all(headers == expected)) {
-    stop("Risk Loss Fitting loss table must have expected headers in B12:P12.", call. = FALSE)
+    alias_headers <- headers
+    alias_headers[alias_headers == "EventID"] <- "ClaimID"
+    alias_headers[alias_headers == "EventLabel"] <- "Insured"
+    if (!all(alias_headers == expected)) {
+      stop("Risk Loss Fitting loss table must have expected headers in B12:P12. ClaimID/EventID and Insured/EventLabel are both supported.", call. = FALSE)
+    }
   }
 
   rows <- list()
