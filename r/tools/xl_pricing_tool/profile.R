@@ -12,7 +12,7 @@ xl_pricing_tool_profile_update <- function(workbook_path, output_dir = NULL, con
   profile_dir <- file.path(output_dir, "profile")
   dir.create(profile_dir, recursive = TRUE, showWarnings = FALSE)
 
-  sheet <- xl_pricing_tool_read_sheet(workbook_path, "Input_Profile")
+  sheet <- xl_pricing_tool_action_sheet(workbook_path, context, "Input_Profile")
   profile_input <- xl_pricing_tool_profile_read_input(sheet)
   layers <- xl_pricing_tool_profile_read_layers(sheet)
   params <- xl_pricing_tool_profile_read_params(sheet)

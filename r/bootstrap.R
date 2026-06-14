@@ -53,8 +53,16 @@ BTK.RunTool <- function(tool_id, workbook_path, output_dir = NULL) {
   BTK.Safe(toolkit_run(tool_id = tool_id, workbook_path = workbook_path, output_dir = output_dir))
 }
 
-BTK.DispatchTool <- function(tool_id, action, workbook_path, output_dir = NULL) {
-  BTK.Safe(toolkit_dispatch(tool_id = tool_id, action = action, workbook_path = workbook_path, output_dir = output_dir))
+BTK.DispatchTool <- function(tool_id, action, workbook_path, output_dir = NULL, active_sheet = NULL) {
+  context <- btk_build_context(
+    tool_id = tool_id,
+    workbook_path = workbook_path,
+    output_dir = output_dir
+  )
+  if (!is.null(active_sheet) && nzchar(active_sheet)) {
+    context$active_sheet <- active_sheet
+  }
+  BTK.Safe(toolkit_dispatch(tool_id = tool_id, action = action, workbook_path = workbook_path, output_dir = output_dir, context = context))
 }
 
 BTK.ToolActions <- function(tool_id) {

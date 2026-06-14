@@ -12,7 +12,7 @@ xl_pricing_tool_agg_update <- function(workbook_path, output_dir = NULL, context
   agg_dir <- file.path(output_dir, "agg")
   dir.create(agg_dir, recursive = TRUE, showWarnings = FALSE)
 
-  agg_sheet <- xl_pricing_tool_read_sheet(workbook_path, "Input_Agg")
+  agg_sheet <- xl_pricing_tool_action_sheet(workbook_path, context, "Input_Agg")
   control_sheet <- xl_pricing_tool_read_sheet(workbook_path, "Control_Module")
 
   aggregate_input <- xl_pricing_tool_agg_read_input(agg_sheet)

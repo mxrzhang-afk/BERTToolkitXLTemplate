@@ -175,6 +175,14 @@ xl_pricing_tool_read_sheet <- function(workbook_path, sheet_name) {
   list(name = sheet_name, cells = cells)
 }
 
+xl_pricing_tool_action_sheet <- function(workbook_path, context, default_sheet) {
+  sheet_name <- default_sheet
+  if (!is.null(context$active_sheet) && nzchar(context$active_sheet)) {
+    sheet_name <- context$active_sheet
+  }
+  xl_pricing_tool_read_sheet(workbook_path, sheet_name)
+}
+
 xl_pricing_tool_xml_unescape <- function(value) {
   value <- gsub("&lt;", "<", value, fixed = TRUE)
   value <- gsub("&gt;", ">", value, fixed = TRUE)

@@ -234,7 +234,7 @@ Private Sub BTK_LoadCsvToRange(ByVal csvPath As String, ByVal destination As Ran
     End With
 End Sub
 
-Private Function BTK_RefreshAggOutput(ByVal outputFolder As String) As String
+Private Function BTK_RefreshAggOutput(ByVal outputFolder As String, ByVal sheetName As String) As String
     Dim ws As Worksheet
     Dim aggFolder As String
     Dim outputPath As String
@@ -253,7 +253,7 @@ Private Function BTK_RefreshAggOutput(ByVal outputFolder As String) As String
     aggFolder = outputFolder & "agg" & Application.PathSeparator
     outputPath = aggFolder & "agg_output.csv"
 
-    Set ws = ThisWorkbook.Worksheets("Input_Agg")
+    Set ws = ThisWorkbook.Worksheets(sheetName)
     lastRow = ws.Cells(ws.Rows.Count, "AH").End(xlUp).Row
     If lastRow < 18 Then
         lastRow = 18
@@ -262,10 +262,10 @@ Private Function BTK_RefreshAggOutput(ByVal outputFolder As String) As String
     ws.Range("AH18:AK" & lastRow).ClearContents
     BTK_LoadCsvToRange outputPath, ws.Range("AH18")
 
-    BTK_RefreshAggOutput = "Aggregate R output refreshed on Input_Agg."
+    BTK_RefreshAggOutput = "Aggregate R output refreshed on " & sheetName & "."
 End Function
 
-Private Function BTK_RefreshProfileOutput(ByVal outputFolder As String) As String
+Private Function BTK_RefreshProfileOutput(ByVal outputFolder As String, ByVal sheetName As String) As String
     Dim ws As Worksheet
     Dim profileFolder As String
     Dim outputPath As String
@@ -286,7 +286,7 @@ Private Function BTK_RefreshProfileOutput(ByVal outputFolder As String) As Strin
     outputPath = profileFolder & "profile_output.csv"
     chartPath = profileFolder & "profile_si_composition_chart.png"
 
-    Set ws = ThisWorkbook.Worksheets("Input_Profile")
+    Set ws = ThisWorkbook.Worksheets(sheetName)
     lastRow = ws.Cells(ws.Rows.Count, "BH").End(xlUp).Row
     If lastRow < 12 Then
         lastRow = 12
@@ -296,10 +296,10 @@ Private Function BTK_RefreshProfileOutput(ByVal outputFolder As String) As Strin
     BTK_LoadCsvToRange outputPath, ws.Range("BH12")
     BTK_InsertImage ws, chartPath, "BTK_Profile_SI_Composition_Chart", BTK_RangeFromSetting(ws, "L56", "K57"), 660, 370
 
-    BTK_RefreshProfileOutput = "Profile R output and SI composition chart refreshed on Input_Profile."
+    BTK_RefreshProfileOutput = "Profile R output and SI composition chart refreshed on " & sheetName & "."
 End Function
 
-Private Function BTK_RefreshRiskFitCharts(ByVal outputFolder As String) As String
+Private Function BTK_RefreshRiskFitCharts(ByVal outputFolder As String, ByVal sheetName As String) As String
     Dim ws As Worksheet
     Dim riskfitFolder As String
     Dim finalChartPath As String
@@ -326,7 +326,7 @@ Private Function BTK_RefreshRiskFitCharts(ByVal outputFolder As String) As Strin
     summaryPath = riskfitFolder & "riskfit_fit_summary.csv"
     parametersPath = riskfitFolder & "riskfit_fit_parameters.csv"
 
-    Set ws = ThisWorkbook.Worksheets("Risk Loss Fitting")
+    Set ws = ThisWorkbook.Worksheets(sheetName)
     ws.Range("CG7:DA200").ClearContents
     BTK_LoadCsvToRange summaryPath, ws.Range("CG7")
     BTK_LoadCsvToRange parametersPath, ws.Range("CV7")
@@ -350,7 +350,7 @@ Private Function BTK_RefreshRiskFitCharts(ByVal outputFolder As String) As Strin
     BTK_InsertRiskFitCdfChart ws, riskfitFolder, "lognormal", "BTK_RiskFit_Lognormal_CDF_Chart", "BO23:BU43"
     BTK_InsertRiskFitCdfChart ws, riskfitFolder, "gamma", "BTK_RiskFit_Gamma_CDF_Chart", "BW23:CC43"
 
-    BTK_RefreshRiskFitCharts = refreshed & "; severity fit output and CDF charts refreshed on Risk Loss Fitting."
+    BTK_RefreshRiskFitCharts = refreshed & "; severity fit output and CDF charts refreshed on " & sheetName & "."
 End Function
 
 Private Sub BTK_InsertRiskFitCdfChart(ByVal ws As Worksheet, ByVal riskfitFolder As String, ByVal familyKey As String, ByVal shapeName As String, ByVal targetAddress As String)
@@ -367,7 +367,7 @@ Private Sub BTK_InsertRiskFitCdfChart(ByVal ws As Worksheet, ByVal riskfitFolder
     End If
 End Sub
 
-Private Function BTK_RefreshGNPICharts(ByVal outputFolder As String) As String
+Private Function BTK_RefreshGNPICharts(ByVal outputFolder As String, ByVal sheetName As String) As String
     Dim ws As Worksheet
     Dim gnpiFolder As String
     Dim levelImagePath As String
@@ -403,7 +403,7 @@ Private Function BTK_RefreshGNPICharts(ByVal outputFolder As String) As String
         Exit Function
     End If
 
-    Set ws = ActiveSheet
+    Set ws = ThisWorkbook.Worksheets(sheetName)
     chartWidth = BTK_NumberFromSetting(ws, "L30", 560)
     levelHeight = BTK_NumberFromSetting(ws, "L31", 285)
     compositionHeight = BTK_NumberFromSetting(ws, "L32", 285)
@@ -414,7 +414,7 @@ Private Function BTK_RefreshGNPICharts(ByVal outputFolder As String) As String
     BTK_InsertImage ws, levelImagePath, "BTK_GNPI_Level_Chart", BTK_RangeFromSetting(ws, "L34", "O18"), chartWidth, levelHeight
     BTK_InsertImage ws, compositionImagePath, "BTK_GNPI_LOB_Comparison_Chart", BTK_RangeFromSetting(ws, "L35", "O43"), chartWidth, compositionHeight
 
-    BTK_RefreshGNPICharts = "GNPI R chart images refreshed."
+    BTK_RefreshGNPICharts = "GNPI R chart images refreshed on " & sheetName & "."
 End Function
 
 Private Function GRe_ObjectiveText() As String
@@ -474,7 +474,7 @@ Private Function GRe_ActionForObjective(ByVal objectiveText As String, ByVal act
     End Select
 End Function
 
-Private Function BTK_DispatchTool(ByVal toolId As String, ByVal action As String, Optional ByVal outputDir As String = "") As Variant
+Private Function BTK_DispatchTool(ByVal toolId As String, ByVal action As String, Optional ByVal outputDir As String = "", Optional ByVal activeSheetName As String = "") As Variant
     If Len(ThisWorkbook.Path) = 0 Then
         Err.Raise vbObjectError + 5100, BTK_SOURCE, "Please save the workbook before running a GRe tool action."
     End If
@@ -487,11 +487,12 @@ Private Function BTK_DispatchTool(ByVal toolId As String, ByVal action As String
             toolId, _
             action, _
             ThisWorkbook.FullName, _
-            outputDir _
+            outputDir, _
+            activeSheetName _
     )
 End Function
 
-Private Sub GRe_HandleResult(ByVal toolId As String, ByVal action As String, ByVal result As Variant, ByVal refreshWorkbook As Boolean)
+Private Sub GRe_HandleResult(ByVal toolId As String, ByVal action As String, ByVal result As Variant, ByVal refreshWorkbook As Boolean, ByVal activeSheetName As String)
     Dim resultText As String
     Dim outputFolder As String
 
@@ -517,25 +518,25 @@ Private Sub GRe_HandleResult(ByVal toolId As String, ByVal action As String, ByV
 
     If refreshWorkbook And toolId = "xl_pricing_tool" And action = "gnpi_update" And InStr(1, resultText, "GNPI update completed.", vbTextCompare) > 0 Then
         outputFolder = BTK_OutputFolderFromResult(resultText)
-        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshGNPICharts(outputFolder)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshGNPICharts(outputFolder, activeSheetName)
         ThisWorkbook.Save
     End If
 
     If refreshWorkbook And toolId = "xl_pricing_tool" And action = "agg_update" And InStr(1, resultText, "Aggregate update completed.", vbTextCompare) > 0 Then
         outputFolder = BTK_OutputFolderFromResult(resultText)
-        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshAggOutput(outputFolder)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshAggOutput(outputFolder, activeSheetName)
         ThisWorkbook.Save
     End If
 
     If refreshWorkbook And toolId = "xl_pricing_tool" And action = "profile_update" And InStr(1, resultText, "Profile update completed.", vbTextCompare) > 0 Then
         outputFolder = BTK_OutputFolderFromResult(resultText)
-        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshProfileOutput(outputFolder)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshProfileOutput(outputFolder, activeSheetName)
         ThisWorkbook.Save
     End If
 
     If refreshWorkbook And toolId = "xl_pricing_tool" And action = "riskfit_update" And InStr(1, resultText, "RiskFit update completed.", vbTextCompare) > 0 Then
         outputFolder = BTK_OutputFolderFromResult(resultText)
-        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshRiskFitCharts(outputFolder)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshRiskFitCharts(outputFolder, activeSheetName)
         ThisWorkbook.Save
     End If
 
@@ -547,9 +548,11 @@ Public Sub GRe_Dispatch(ByVal action As String)
     Dim toolId As String
     Dim actionName As String
     Dim result As Variant
+    Dim activeSheetName As String
 
     On Error GoTo DispatchFailed
 
+    activeSheetName = ActiveSheet.Name
     objectiveText = GRe_ObjectiveText()
     If Len(objectiveText) = 0 Then
         MsgBox "no definable action for this tab", vbInformation, "GRe Tools"
@@ -563,8 +566,8 @@ Public Sub GRe_Dispatch(ByVal action As String)
     End If
 
     actionName = GRe_ActionForObjective(objectiveText, action)
-    result = BTK_DispatchTool(toolId, actionName, "")
-    GRe_HandleResult toolId, actionName, result, True
+    result = BTK_DispatchTool(toolId, actionName, "", activeSheetName)
+    GRe_HandleResult toolId, actionName, result, True, activeSheetName
     Exit Sub
 
 DispatchFailed:
@@ -671,7 +674,9 @@ End Function
 
 Public Sub BTK_RunChinaExposureMap()
     Dim result As Variant
+    Dim activeSheetName As String
 
-    result = BTK_DispatchTool("china_exposure_map", "update", "")
-    GRe_HandleResult "china_exposure_map", "update", result, True
+    activeSheetName = ActiveSheet.Name
+    result = BTK_DispatchTool("china_exposure_map", "update", "", activeSheetName)
+    GRe_HandleResult "china_exposure_map", "update", result, True, activeSheetName
 End Sub

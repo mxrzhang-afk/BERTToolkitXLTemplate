@@ -12,7 +12,7 @@ xl_pricing_tool_gnpi_update <- function(workbook_path, output_dir = NULL, contex
   gnpi_dir <- file.path(output_dir, "gnpi")
   dir.create(gnpi_dir, recursive = TRUE, showWarnings = FALSE)
 
-  sheet <- xl_pricing_tool_read_sheet(workbook_path, "Input_GNPI")
+  sheet <- xl_pricing_tool_action_sheet(workbook_path, context, "Input_GNPI")
   marker <- xl_pricing_tool_cell_value(sheet, "A1")
   gather_from <- xl_pricing_tool_cell_value(sheet, "C6")
   start_year <- xl_pricing_tool_gnpi_start_year(sheet)
