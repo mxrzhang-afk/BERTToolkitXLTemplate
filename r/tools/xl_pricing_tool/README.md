@@ -180,3 +180,80 @@ Current = RNL_Year - 1
 ```
 
 No charts are planned for this tab.
+
+## Tab: Input_Profile
+
+Marker:
+
+```text
+<<Profile>>
+```
+
+Implemented first-stage action:
+
+```text
+profile_update
+```
+
+Default behavior:
+
+- `gather`: not defined when `Gather From` is blank.
+- `update`: calculate exposure-in-layer and refresh the R Output block.
+- `build`: planned for the simulated loss table stage.
+
+`profile_update` reads risk profile input from `Input_Profile!B12:I...`:
+
+```text
+AsAt | UY | LOB | Nrisk | SI | Premium | Incurred | Remarks
+```
+
+Layer definitions are read from `Input_Profile!X13:AC...`:
+
+```text
+LayerID | Limit | Deductible | LayerName | Prior_LOBs | Current_LOBs
+```
+
+Coverage LOB rules:
+
+- `Prior` rows use `Prior_LOBs`.
+- `Current` rows use `Current_LOBs`.
+- blank coverage LOB cells include all LOBs.
+- nonblank coverage LOB cells can use comma, slash, or semicolon delimiters.
+
+Exposure-in-layer is calculated per risk band as:
+
+```text
+Avg_SI = SI / Nrisk
+expo_in_layer = Nrisk * min(max(Avg_SI - Deductible, 0), Limit)
+```
+
+Adjusted exposure is calculated from the matching prior/current LOB exposure
+rating parameters:
+
+```text
+adj_expo_in_layer = expo_in_layer * SubjectPrem / ActualPrem
+```
+
+The R action writes:
+
+```text
+_BERTToolkitTemp/xl_pricing_tool/profile/profile_output.csv
+_BERTToolkitTemp/xl_pricing_tool/profile/profile_si_composition_data.csv
+_BERTToolkitTemp/xl_pricing_tool/profile/profile_si_composition_chart.png
+```
+
+VBA overwrites only:
+
+```text
+Input_Profile!BH12:BS...
+```
+
+The left and middle workbook formulas remain untouched. VBA also inserts the SI
+composition chart at the anchor address in `L56`, or `K57` if `L56` is blank.
+
+The SI composition chart is a faceted 100% stacked bar chart. It uses average
+SI risk bands from `K37:K44`; a `Band Cut` label and trailing blank slots are
+allowed, but nonblank cut values must be numeric and nonnegative and at least
+two unique cut points must be present. Facets are read from `K47:K55`; a header
+value of `LOB` is ignored, blank facet inputs mean all LOBs, and
+comma/slash/semicolon delimiters are supported.

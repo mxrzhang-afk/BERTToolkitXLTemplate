@@ -241,6 +241,40 @@ Private Function BTK_RefreshAggOutput(ByVal outputFolder As String) As String
     BTK_RefreshAggOutput = "Aggregate R output refreshed on Input_Agg."
 End Function
 
+Private Function BTK_RefreshProfileOutput(ByVal outputFolder As String) As String
+    Dim ws As Worksheet
+    Dim profileFolder As String
+    Dim outputPath As String
+    Dim chartPath As String
+    Dim lastRow As Long
+
+    If Len(outputFolder) = 0 Then
+        BTK_RefreshProfileOutput = "Profile output refresh skipped: could not find output folder in R result."
+        Exit Function
+    End If
+
+    outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
+    If Right$(outputFolder, 1) <> Application.PathSeparator Then
+        outputFolder = outputFolder & Application.PathSeparator
+    End If
+
+    profileFolder = outputFolder & "profile" & Application.PathSeparator
+    outputPath = profileFolder & "profile_output.csv"
+    chartPath = profileFolder & "profile_si_composition_chart.png"
+
+    Set ws = ThisWorkbook.Worksheets("Input_Profile")
+    lastRow = ws.Cells(ws.Rows.Count, "BH").End(xlUp).Row
+    If lastRow < 12 Then
+        lastRow = 12
+    End If
+
+    ws.Range("BH12:BS" & lastRow).ClearContents
+    BTK_LoadCsvToRange outputPath, ws.Range("BH12")
+    BTK_InsertImage ws, chartPath, "BTK_Profile_SI_Composition_Chart", BTK_RangeFromSetting(ws, "L56", "K57"), 660, 370
+
+    BTK_RefreshProfileOutput = "Profile R output and SI composition chart refreshed on Input_Profile."
+End Function
+
 Private Function BTK_RefreshGNPICharts(ByVal outputFolder As String) As String
     Dim ws As Worksheet
     Dim gnpiFolder As String
@@ -322,6 +356,8 @@ Private Function GRe_ToolIdForObjective(ByVal objectiveText As String) As String
             GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "agg"
             GRe_ToolIdForObjective = "xl_pricing_tool"
+        Case "profile"
+            GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "curve fit risk"
             GRe_ToolIdForObjective = "curve_fit_risk"
         Case Else
@@ -335,6 +371,8 @@ Private Function GRe_ActionForObjective(ByVal objectiveText As String, ByVal act
             GRe_ActionForObjective = "gnpi_" & LCase$(action)
         Case "agg"
             GRe_ActionForObjective = "agg_" & LCase$(action)
+        Case "profile"
+            GRe_ActionForObjective = "profile_" & LCase$(action)
         Case Else
             GRe_ActionForObjective = LCase$(action)
     End Select
@@ -390,6 +428,12 @@ Private Sub GRe_HandleResult(ByVal toolId As String, ByVal action As String, ByV
     If refreshWorkbook And toolId = "xl_pricing_tool" And action = "agg_update" And InStr(1, resultText, "Aggregate update completed.", vbTextCompare) > 0 Then
         outputFolder = BTK_OutputFolderFromResult(resultText)
         resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshAggOutput(outputFolder)
+        ThisWorkbook.Save
+    End If
+
+    If refreshWorkbook And toolId = "xl_pricing_tool" And action = "profile_update" And InStr(1, resultText, "Profile update completed.", vbTextCompare) > 0 Then
+        outputFolder = BTK_OutputFolderFromResult(resultText)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshProfileOutput(outputFolder)
         ThisWorkbook.Save
     End If
 

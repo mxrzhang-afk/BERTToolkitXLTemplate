@@ -7,6 +7,7 @@ source(file.path(BTK_ROOT, "r", "tools", "china_exposure_map", "tool.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "tool.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "gnpi.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "agg.R"))
+source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "profile.R"))
 source(file.path(BTK_ROOT, "r", "tools", "curve_fit_risk", "tool.R"))
 
 toolkit_version <- function() {
@@ -33,7 +34,10 @@ toolkit_registry <- function() {
         gnpi_build = xl_pricing_tool_gnpi_build,
         agg_gather = xl_pricing_tool_agg_gather,
         agg_update = xl_pricing_tool_agg_update,
-        agg_build = xl_pricing_tool_agg_build
+        agg_build = xl_pricing_tool_agg_build,
+        profile_gather = xl_pricing_tool_profile_gather,
+        profile_update = xl_pricing_tool_profile_update,
+        profile_build = xl_pricing_tool_profile_build
       ),
       run = xl_pricing_tool_update,
       validate = xl_pricing_tool_validate,

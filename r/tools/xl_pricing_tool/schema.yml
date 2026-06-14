@@ -23,6 +23,12 @@ actions:
     status: implemented
   agg_build:
     status: not_defined
+  profile_gather:
+    status: not_defined_when_gather_from_blank
+  profile_update:
+    status: implemented
+  profile_build:
+    status: planned
 tabs:
   Input_GNPI:
     marker: "<<GNPI>>"
@@ -103,12 +109,72 @@ tabs:
       prior_year: RNL_Year - 2
       current_year: RNL_Year - 1
       charts: none
+  Input_Profile:
+    marker: "<<Profile>>"
+    gather:
+      status: not_defined_when_gather_from_blank
+    update:
+      function: xl_pricing_tool_profile_update
+      status: implemented
+      outputs:
+        - _BERTToolkitTemp/xl_pricing_tool/profile/profile_output.csv
+        - _BERTToolkitTemp/xl_pricing_tool/profile/profile_si_composition_data.csv
+        - _BERTToolkitTemp/xl_pricing_tool/profile/profile_si_composition_chart.png
+      excel_post_process:
+        function: BTK_RefreshProfileOutput
+        target_range: Input_Profile!BH12:BS...
+        mode: overwrite_output_block_and_insert_chart
+    build:
+      function: xl_pricing_tool_profile_build
+      status: planned
+      purpose: "Generate a combined simulated loss table after the curve mechanics and output schema are approved."
+    inputs:
+      risk_profile_table:
+        range: Input_Profile!B12:I...
+        required_columns:
+          - AsAt
+          - UY
+          - LOB
+          - Nrisk
+          - SI
+          - Premium
+          - Incurred
+          - Remarks
+      layer_table:
+        range: Input_Profile!X13:AC...
+        required_columns:
+          - LayerID
+          - Limit
+          - Deductible
+          - LayerName
+          - Prior_LOBs
+          - Current_LOBs
+      parameter_table:
+        range: Input_Profile!M12:U...
+        used_columns:
+          - LOB
+          - LossCause
+          - SubjectPrem
+          - ActualPrem
+      chart_band_cuts:
+        range: Input_Profile!K37:K44
+        rule: "Band Cut label and trailing blanks are allowed. Nonblank cut values must be numeric and nonnegative, and at least two unique cut points must be present."
+      chart_facets:
+        range: Input_Profile!K47:K55
+        rule: "Optional. Blank means all LOBs. A header value of LOB is ignored. Facet specs can use comma, slash, or semicolon delimiters."
+    rules:
+      expo_in_layer: "Nrisk * min(max((SI / Nrisk) - Deductible, 0), Limit)"
+      adj_expo_in_layer: "expo_in_layer * SubjectPrem / ActualPrem"
+      coverage_lob_delimiters: "comma, slash, semicolon"
+      blank_coverage_lobs: include_all_lobs
+      si_composition_chart: "100% stacked bar chart by AsAt, faceted by K47:K55 LOB specs, with Avg_SI bands from K37:K44."
+      output_scope: "Only BG:BT / BH:BS R output block is overwritten by VBA."
 required_sheets:
   - Control_Module
   - Input_GNPI
   - Input_Agg
   - Input_Layers
-  - Input_Portfolio
+  - Input_Profile
   - Portfolio
   - Risk Loss Fitting
   - PriceSelection_Risk

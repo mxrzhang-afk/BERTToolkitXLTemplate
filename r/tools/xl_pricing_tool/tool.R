@@ -7,7 +7,7 @@ xl_pricing_tool_validate <- function(workbook_path, context = list()) {
     "Input_GNPI",
     "Input_Agg",
     "Input_Layers",
-    "Input_Portfolio",
+    "Input_Profile",
     "Portfolio",
     "Risk Loss Fitting",
     "PriceSelection_Risk",

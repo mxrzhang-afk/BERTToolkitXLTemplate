@@ -201,7 +201,7 @@ Control_Module
 Input_GNPI
 Input_Agg
 Input_Layers
-Input_Portfolio
+Input_Profile
 Portfolio
 Risk Loss Fitting
 PriceSelection_Risk
