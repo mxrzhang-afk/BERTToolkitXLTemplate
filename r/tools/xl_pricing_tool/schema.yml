@@ -180,17 +180,25 @@ tabs:
     gather:
       status: not_defined_when_gather_from_blank
     update:
-      status: implemented_chart_stage
+      status: implemented_mle_diagnostics_stage
       proposed_action: riskfit_update
-      purpose: "Produce first diagnostic loss comparison chart. Later stages will fit prior/current risk loss severity parameters. Frequency remains owned by workbook formulas."
+      purpose: "Produce loss comparison charts, weighted MLE severity fits, and prior/current CDF diagnostics. Frequency remains owned by workbook formulas."
       outputs:
         - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_loss_comparison_data.csv
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_fit_summary.csv
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_fit_parameters.csv
         - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_final_incurred_loss_chart.png
         - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_actual_incurred_loss_chart.png
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_pareto_cdf_chart.png
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_loggamma_cdf_chart.png
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_weibull_cdf_chart.png
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_lognormal_cdf_chart.png
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_gamma_cdf_chart.png
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_loglogistic_cdf_chart.png
       excel_post_process:
         function: BTK_RefreshRiskFitCharts
-        target_range: "'Risk Loss Fitting'!R54:AK98"
-        mode: insert_two_charts
+        target_range: "'Risk Loss Fitting'!R54:AK98 and distribution CDF chart blocks"
+        mode: "load_fit_csvs_to_r_output_area_and_insert_charts"
       current_r_output:
         range: "'Risk Loss Fitting'!BN12:BO14"
         columns:
@@ -264,18 +272,23 @@ tabs:
         - Current
       frequency_owner: Excel
       severity_owner: R
-      update_scope: "Current stage produces the first diagnostic loss comparison chart; severity fitting comes next. Frequency remains calculated by workbook formulas."
-      loss_comparison_chart: "Two separate individual-loss charts. TreatyYear is the facet, losses are columns, and Prior/Current are side-by-side. Final chart uses Final_Incurred; optional actual chart uses Actual_Incurred. Layer structure controls y-axis maximum and background bands only."
-      severity_distributions_planned:
+      update_scope: "Fits severity distributions using Final_Incurred as the loss and FinalRate as the observation weight. Frequency remains calculated by workbook formulas."
+      loss_comparison_chart: "Two separate individual-loss charts. TreatyYear is the facet, losses are columns, and Prior/Current are side-by-side. Final chart uses Final_Incurred; optional actual chart uses Actual_Incurred. Layer structure controls y-axis maximum and background bands only. PNG width dynamically expands with the number of losses/facets, and VBA anchors charts at X61 and X94 while preserving aspect ratio."
+      severity_fitting:
+        loss: Final_Incurred
+        weight: FinalRate
+        likelihood: "sum(FinalRate * log density(Final_Incurred | theta))"
+        empirical_cdf: "weighted by FinalRate"
+        pareto_threshold: "fixed to the user's minimum loss threshold"
+        output_area: "'Risk Loss Fitting'!CG7:DA..."
+        distribution_blocks: "Excel-owned formulas in AQ:CC; VBA does not overwrite these cells."
+      severity_distributions_supported:
         - Pareto
         - Lognormal
         - Gamma
         - Loggamma
         - Weibull
         - Loglogistic
-    open_questions:
-      - "Which severity distributions should be included in the first implementation versus staged after Pareto?"
-      - "What exact output schema should replace or extend BN12:BO14 when multiple distributions are fitted?"
 required_sheets:
   - Control_Module
   - Input_GNPI

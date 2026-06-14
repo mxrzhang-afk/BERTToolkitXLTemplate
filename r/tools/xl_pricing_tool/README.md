@@ -266,7 +266,7 @@ Marker:
 <<RiskFit>>
 ```
 
-Implemented chart-stage action:
+Implemented action:
 
 ```text
 riskfit_update
@@ -275,7 +275,8 @@ riskfit_update
 Default behavior:
 
 - `gather`: not defined when `Gather From` is blank.
-- `update`: produces the first diagnostic loss comparison chart.
+- `update`: produces loss comparison charts, weighted MLE severity fits, and
+  distribution CDF diagnostic charts.
 - `build`: no build action is defined for this tab.
 
 The tab currently combines loss input, Excel-side on-level adjustments, frequency
@@ -290,7 +291,7 @@ FinalRate | Sev_Trend | Final_Incurred
 ```
 
 The current workbook formulas already compute the adjusted loss amount in
-`Final_Incurred`, using:
+`Final_Incurred` and the fitting weight in `FinalRate`, using:
 
 - inflation severity trend toggle from `W5`,
 - GNPI occurrence adjustment toggle from `W6`,
@@ -319,8 +320,11 @@ Current `riskfit_update` behavior:
 - read the loss table and controls from the current workbook;
 - support only `Prior` and `Current`;
 - keep frequency Excel-owned, including lambda and adjusted frequency formulas;
-- produce the first diagnostic chart as an R-generated PNG;
-- insert that PNG into `Risk Loss Fitting!R54:AK98`.
+- fit severity distributions in R using `Final_Incurred` as the loss and
+  `FinalRate` as the observation weight;
+- produce the loss comparison charts as R-generated PNGs;
+- produce one weighted CDF diagnostic chart per distribution family;
+- insert the PNGs into the Risk Loss Fitting tab.
 
 Loss comparison chart controls:
 
@@ -344,20 +348,48 @@ Chart behavior:
 - individual losses are columns inside each treaty-year facet;
 - `Prior` and `Current` are side-by-side columns;
 - layers define the y-axis maximum and background banding only;
-- no layer legend or layer labels are produced.
+- no layer legend or layer labels are produced;
+- loss comparison chart image width expands with the number of unique losses and
+  treaty-year facets;
+- Excel inserts the final chart at `X61` and the actual chart at `X94`, preserving
+  the generated image aspect ratio.
 
 Generated files:
 
 ```text
 _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_loss_comparison_data.csv
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_fit_summary.csv
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_fit_parameters.csv
 _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_final_incurred_loss_chart.png
 _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_actual_incurred_loss_chart.png
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_pareto_cdf_chart.png
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_loggamma_cdf_chart.png
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_weibull_cdf_chart.png
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_lognormal_cdf_chart.png
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_gamma_cdf_chart.png
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_loglogistic_cdf_chart.png
 ```
 
-Later `riskfit_update` stages will add MLE severity fitting across selected
-distributions.
+Severity fitting:
 
-Planned severity fit family:
+```text
+loss_i   = Final_Incurred
+weight_i = FinalRate
+```
+
+The weighted log-likelihood is:
+
+```text
+sum(weight_i * log density(loss_i | theta))
+```
+
+The empirical CDF diagnostics use the same weights:
+
+```text
+cumulative FinalRate for losses <= x / total FinalRate
+```
+
+Supported severity fit families:
 
 ```text
 Pareto
@@ -368,9 +400,14 @@ Weibull
 Loglogistic
 ```
 
-Open design questions:
+Pareto uses the user's minimum loss threshold as a fixed threshold and fits only
+`alpha`. The other families fit the parameter sets shown in the workbook blocks.
+The full fit summary is loaded to `CG7`, and the parameter table is loaded to
+`CV7`. The distribution blocks in `AQ:CC` are Excel-owned; native formulas should
+pull from the R output area rather than VBA overwriting those cells.
 
-- Which distributions should be included in the first implementation versus
-  staged after Pareto?
-- What output schema should replace or extend `BN12:BO14` once multiple
-  distributions are fitted?
+```text
+CG7:CS...  Fit summary
+CV7:DA...  Fit parameters
+AQ:CC      Distribution blocks controlled by native Excel formulas
+```

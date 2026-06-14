@@ -167,6 +167,30 @@ Private Sub BTK_InsertImage(ByVal ws As Worksheet, ByVal imagePath As String, By
     picture.Placement = xlMoveAndSize
 End Sub
 
+Private Sub BTK_InsertImageFitWidth(ByVal ws As Worksheet, ByVal imagePath As String, ByVal shapeName As String, ByVal targetCell As Range, ByVal width As Double)
+    Dim picture As Shape
+
+    If Len(Dir(imagePath)) = 0 Then
+        Err.Raise vbObjectError + 5114, BTK_SOURCE, "Chart image was not created: " & imagePath
+    End If
+
+    BTK_DeleteShapeIfExists ws, shapeName
+
+    Set picture = ws.Shapes.AddPicture( _
+        Filename:=imagePath, _
+        LinkToFile:=False, _
+        SaveWithDocument:=True, _
+        Left:=targetCell.Left, _
+        Top:=targetCell.Top, _
+        Width:=-1, _
+        Height:=-1 _
+    )
+    picture.Name = shapeName
+    picture.LockAspectRatio = True
+    picture.Width = width
+    picture.Placement = xlMoveAndSize
+End Sub
+
 Private Function BTK_RangeFromSetting(ByVal ws As Worksheet, ByVal settingCell As String, ByVal defaultAddress As String) As Range
     Dim addressText As String
 
@@ -280,6 +304,8 @@ Private Function BTK_RefreshRiskFitCharts(ByVal outputFolder As String) As Strin
     Dim riskfitFolder As String
     Dim finalChartPath As String
     Dim actualChartPath As String
+    Dim summaryPath As String
+    Dim parametersPath As String
     Dim finalTarget As Range
     Dim actualTarget As Range
     Dim refreshed As String
@@ -297,23 +323,49 @@ Private Function BTK_RefreshRiskFitCharts(ByVal outputFolder As String) As Strin
     riskfitFolder = outputFolder & "riskfit" & Application.PathSeparator
     finalChartPath = riskfitFolder & "riskfit_final_incurred_loss_chart.png"
     actualChartPath = riskfitFolder & "riskfit_actual_incurred_loss_chart.png"
+    summaryPath = riskfitFolder & "riskfit_fit_summary.csv"
+    parametersPath = riskfitFolder & "riskfit_fit_parameters.csv"
 
     Set ws = ThisWorkbook.Worksheets("Risk Loss Fitting")
-    Set finalTarget = ws.Range("R54:AK75")
-    Set actualTarget = ws.Range("R77:AK98")
-    BTK_InsertImage ws, finalChartPath, "BTK_RiskFit_Final_Incurred_Loss_Chart", finalTarget.Cells(1, 1), finalTarget.Width, finalTarget.Height
+    ws.Range("CG7:DA200").ClearContents
+    BTK_LoadCsvToRange summaryPath, ws.Range("CG7")
+    BTK_LoadCsvToRange parametersPath, ws.Range("CV7")
+
+    Set finalTarget = ws.Range("X61:AK91")
+    Set actualTarget = ws.Range("X94:AK124")
+    BTK_InsertImageFitWidth ws, finalChartPath, "BTK_RiskFit_Final_Incurred_Loss_Chart", ws.Range("X61"), finalTarget.Width
     refreshed = "RiskFit final incurred chart refreshed"
 
     If Len(Dir(actualChartPath)) > 0 Then
-        BTK_InsertImage ws, actualChartPath, "BTK_RiskFit_Actual_Incurred_Loss_Chart", actualTarget.Cells(1, 1), actualTarget.Width, actualTarget.Height
+        BTK_InsertImageFitWidth ws, actualChartPath, "BTK_RiskFit_Actual_Incurred_Loss_Chart", ws.Range("X94"), actualTarget.Width
         refreshed = refreshed & "; actual incurred chart refreshed"
     Else
         BTK_DeleteShapeIfExists ws, "BTK_RiskFit_Actual_Incurred_Loss_Chart"
         refreshed = refreshed & "; actual incurred chart skipped"
     End If
 
-    BTK_RefreshRiskFitCharts = refreshed & " on Risk Loss Fitting."
+    BTK_InsertRiskFitCdfChart ws, riskfitFolder, "pareto", "BTK_RiskFit_Pareto_CDF_Chart", "AQ23:AW43"
+    BTK_InsertRiskFitCdfChart ws, riskfitFolder, "loggamma", "BTK_RiskFit_Loggamma_CDF_Chart", "AY23:BE43"
+    BTK_InsertRiskFitCdfChart ws, riskfitFolder, "weibull", "BTK_RiskFit_Weibull_CDF_Chart", "BG23:BM43"
+    BTK_InsertRiskFitCdfChart ws, riskfitFolder, "lognormal", "BTK_RiskFit_Lognormal_CDF_Chart", "BO23:BU43"
+    BTK_InsertRiskFitCdfChart ws, riskfitFolder, "gamma", "BTK_RiskFit_Gamma_CDF_Chart", "BW23:CC43"
+
+    BTK_RefreshRiskFitCharts = refreshed & "; severity fit output and CDF charts refreshed on Risk Loss Fitting."
 End Function
+
+Private Sub BTK_InsertRiskFitCdfChart(ByVal ws As Worksheet, ByVal riskfitFolder As String, ByVal familyKey As String, ByVal shapeName As String, ByVal targetAddress As String)
+    Dim chartPath As String
+    Dim target As Range
+
+    chartPath = riskfitFolder & "riskfit_" & familyKey & "_cdf_chart.png"
+    Set target = ws.Range(targetAddress)
+
+    If Len(Dir(chartPath)) > 0 Then
+        BTK_InsertImage ws, chartPath, shapeName, target.Cells(1, 1), target.Width, target.Height
+    Else
+        BTK_DeleteShapeIfExists ws, shapeName
+    End If
+End Sub
 
 Private Function BTK_RefreshGNPICharts(ByVal outputFolder As String) As String
     Dim ws As Worksheet
