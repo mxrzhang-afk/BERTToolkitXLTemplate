@@ -257,3 +257,120 @@ allowed, but nonblank cut values must be numeric and nonnegative and at least
 two unique cut points must be present. Facets are read from `K47:K55`; a header
 value of `LOB` is ignored, blank facet inputs mean all LOBs, and
 comma/slash/semicolon delimiters are supported.
+
+## Tab: Risk Loss Fitting
+
+Marker:
+
+```text
+<<RiskFit>>
+```
+
+Implemented chart-stage action:
+
+```text
+riskfit_update
+```
+
+Default behavior:
+
+- `gather`: not defined when `Gather From` is blank.
+- `update`: produces the first diagnostic loss comparison chart.
+- `build`: no build action is defined for this tab.
+
+The tab currently combines loss input, Excel-side on-level adjustments, frequency
+and severity summaries, and a compact R input/output block.
+
+The primary loss table starts at `B12:P`:
+
+```text
+AsAt | ClaimID | LOB | Insured | AY | TreatyYear | Actual_Incurred
+OnLevel_Incurred | ReturnPeriod | OriginalRate | GNPI_Scale | RP_Scale
+FinalRate | Sev_Trend | Final_Incurred
+```
+
+The current workbook formulas already compute the adjusted loss amount in
+`Final_Incurred`, using:
+
+- inflation severity trend toggle from `W5`,
+- GNPI occurrence adjustment toggle from `W6`,
+- customized return-period adjustment toggle from `W7`,
+- `Min`, `Max`, and `StartYear` from `S5:S7`.
+
+The middle summary area calculates:
+
+```text
+R14:T32   Exposure by year
+V14:W33   Actual claim counts
+Y14:Z35   Adjusted frequency
+AB17:AE21 Severity threshold comparison
+```
+
+The existing R handoff layout is:
+
+```text
+BC12:BG18  R Dataspec
+BI12:BL14  R Input:  AsAt | LossCause | lambda | alpha
+BN12:BO14  R Output: AsAt | Alpha
+```
+
+Current `riskfit_update` behavior:
+
+- read the loss table and controls from the current workbook;
+- support only `Prior` and `Current`;
+- keep frequency Excel-owned, including lambda and adjusted frequency formulas;
+- produce the first diagnostic chart as an R-generated PNG;
+- insert that PNG into `Risk Loss Fitting!R54:AK98`.
+
+Loss comparison chart controls:
+
+```text
+T56 = minimum loss included
+T57 = chart start year
+T58 = showActual
+Z56 = main title, shared by both panels
+Z57 = adjusted loss subtitle
+Z58 = actual loss subtitle
+S61:T... = layer structure, Limit | Ded
+```
+
+Chart behavior:
+
+- individual losses, not annual aggregate losses;
+- two separate PNG charts are produced;
+- the final incurred chart uses `Final_Incurred`;
+- the actual incurred chart uses `Actual_Incurred` only when `showActual` is true;
+- `TreatyYear` is the facet;
+- individual losses are columns inside each treaty-year facet;
+- `Prior` and `Current` are side-by-side columns;
+- layers define the y-axis maximum and background banding only;
+- no layer legend or layer labels are produced.
+
+Generated files:
+
+```text
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_loss_comparison_data.csv
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_final_incurred_loss_chart.png
+_BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_actual_incurred_loss_chart.png
+```
+
+Later `riskfit_update` stages will add MLE severity fitting across selected
+distributions.
+
+Planned severity fit family:
+
+```text
+Pareto
+Lognormal
+Gamma
+Loggamma
+Weibull
+Loglogistic
+```
+
+Open design questions:
+
+- Which distributions should be included in the first implementation versus
+  staged after Pareto?
+- What output schema should replace or extend `BN12:BO14` once multiple
+  distributions are fitted?

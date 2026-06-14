@@ -29,6 +29,12 @@ actions:
     status: implemented
   profile_build:
     status: planned
+  riskfit_gather:
+    status: not_defined_when_gather_from_blank
+  riskfit_update:
+    status: discussion
+  riskfit_build:
+    status: discussion
 tabs:
   Input_GNPI:
     marker: "<<GNPI>>"
@@ -169,6 +175,107 @@ tabs:
       blank_coverage_lobs: include_all_lobs
       si_composition_chart: "100% stacked bar chart by AsAt, faceted by K47:K55 LOB specs, with Avg_SI bands from K37:K44."
       output_scope: "Only BG:BT / BH:BS R output block is overwritten by VBA."
+  Risk Loss Fitting:
+    marker: "<<RiskFit>>"
+    gather:
+      status: not_defined_when_gather_from_blank
+    update:
+      status: implemented_chart_stage
+      proposed_action: riskfit_update
+      purpose: "Produce first diagnostic loss comparison chart. Later stages will fit prior/current risk loss severity parameters. Frequency remains owned by workbook formulas."
+      outputs:
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_loss_comparison_data.csv
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_final_incurred_loss_chart.png
+        - _BERTToolkitTemp/xl_pricing_tool/riskfit/riskfit_actual_incurred_loss_chart.png
+      excel_post_process:
+        function: BTK_RefreshRiskFitCharts
+        target_range: "'Risk Loss Fitting'!R54:AK98"
+        mode: insert_two_charts
+      current_r_output:
+        range: "'Risk Loss Fitting'!BN12:BO14"
+        columns:
+          - AsAt
+          - Alpha
+      current_r_input:
+        range: "'Risk Loss Fitting'!BI12:BL14"
+        columns:
+          - AsAt
+          - LossCause
+          - lambda
+          - alpha
+    build:
+      status: not_defined
+      purpose: "No build action is defined for this tab."
+    inputs:
+      loss_table:
+        range: "'Risk Loss Fitting'!B12:P..."
+        required_columns:
+          - AsAt
+          - ClaimID
+          - LOB
+          - Insured
+          - AY
+          - TreatyYear
+          - Actual_Incurred
+          - OnLevel_Incurred
+          - ReturnPeriod
+          - OriginalRate
+          - GNPI_Scale
+          - RP_Scale
+          - FinalRate
+          - Sev_Trend
+          - Final_Incurred
+      specifications:
+        range: "'Risk Loss Fitting'!R5:S7"
+        fields:
+          - Min
+          - Max
+          - StartYear
+      toggles:
+        range: "'Risk Loss Fitting'!V5:W7"
+        fields:
+          - Inflation Trend Sev.
+          - GNPI adj. Sev. Occ.
+          - Customized R.P.
+      fit_selection:
+        range: "'Risk Loss Fitting'!BI12:BL14"
+        fields:
+          - AsAt
+          - LossCause
+          - lambda
+          - alpha
+      chart_filters:
+        loss_comparison:
+          filter_range: "'Risk Loss Fitting'!S56:T58"
+          title_range: "'Risk Loss Fitting'!Y56:Z58"
+          layer_range: "'Risk Loss Fitting'!S61:T..."
+          output_canvas: "'Risk Loss Fitting'!R54:AK98"
+        cdf_filter: "'Risk Loss Fitting'!AH12:AI15"
+        loss_filter: "'Risk Loss Fitting'!AH39:AI42"
+        layer_filter: "'Risk Loss Fitting'!AH44:AI49"
+    existing_excel_calculations:
+      exposure: "'Risk Loss Fitting'!R14:T32"
+      counts: "'Risk Loss Fitting'!V14:W33"
+      adjusted_frequency: "'Risk Loss Fitting'!Y14:Z35"
+      severity_comparison: "'Risk Loss Fitting'!AB17:AE21"
+    rules:
+      supported_asat:
+        - Prior
+        - Current
+      frequency_owner: Excel
+      severity_owner: R
+      update_scope: "Current stage produces the first diagnostic loss comparison chart; severity fitting comes next. Frequency remains calculated by workbook formulas."
+      loss_comparison_chart: "Two separate individual-loss charts. TreatyYear is the facet, losses are columns, and Prior/Current are side-by-side. Final chart uses Final_Incurred; optional actual chart uses Actual_Incurred. Layer structure controls y-axis maximum and background bands only."
+      severity_distributions_planned:
+        - Pareto
+        - Lognormal
+        - Gamma
+        - Loggamma
+        - Weibull
+        - Loglogistic
+    open_questions:
+      - "Which severity distributions should be included in the first implementation versus staged after Pareto?"
+      - "What exact output schema should replace or extend BN12:BO14 when multiple distributions are fitted?"
 required_sheets:
   - Control_Module
   - Input_GNPI

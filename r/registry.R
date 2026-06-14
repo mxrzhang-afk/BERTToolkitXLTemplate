@@ -8,6 +8,7 @@ source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "tool.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "gnpi.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "agg.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "profile.R"))
+source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "riskfit.R"))
 source(file.path(BTK_ROOT, "r", "tools", "curve_fit_risk", "tool.R"))
 
 toolkit_version <- function() {
@@ -37,7 +38,10 @@ toolkit_registry <- function() {
         agg_build = xl_pricing_tool_agg_build,
         profile_gather = xl_pricing_tool_profile_gather,
         profile_update = xl_pricing_tool_profile_update,
-        profile_build = xl_pricing_tool_profile_build
+        profile_build = xl_pricing_tool_profile_build,
+        riskfit_gather = xl_pricing_tool_riskfit_gather,
+        riskfit_update = xl_pricing_tool_riskfit_update,
+        riskfit_build = xl_pricing_tool_riskfit_build
       ),
       run = xl_pricing_tool_update,
       validate = xl_pricing_tool_validate,

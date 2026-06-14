@@ -275,6 +275,46 @@ Private Function BTK_RefreshProfileOutput(ByVal outputFolder As String) As Strin
     BTK_RefreshProfileOutput = "Profile R output and SI composition chart refreshed on Input_Profile."
 End Function
 
+Private Function BTK_RefreshRiskFitCharts(ByVal outputFolder As String) As String
+    Dim ws As Worksheet
+    Dim riskfitFolder As String
+    Dim finalChartPath As String
+    Dim actualChartPath As String
+    Dim finalTarget As Range
+    Dim actualTarget As Range
+    Dim refreshed As String
+
+    If Len(outputFolder) = 0 Then
+        BTK_RefreshRiskFitCharts = "RiskFit chart refresh skipped: could not find output folder in R result."
+        Exit Function
+    End If
+
+    outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
+    If Right$(outputFolder, 1) <> Application.PathSeparator Then
+        outputFolder = outputFolder & Application.PathSeparator
+    End If
+
+    riskfitFolder = outputFolder & "riskfit" & Application.PathSeparator
+    finalChartPath = riskfitFolder & "riskfit_final_incurred_loss_chart.png"
+    actualChartPath = riskfitFolder & "riskfit_actual_incurred_loss_chart.png"
+
+    Set ws = ThisWorkbook.Worksheets("Risk Loss Fitting")
+    Set finalTarget = ws.Range("R54:AK75")
+    Set actualTarget = ws.Range("R77:AK98")
+    BTK_InsertImage ws, finalChartPath, "BTK_RiskFit_Final_Incurred_Loss_Chart", finalTarget.Cells(1, 1), finalTarget.Width, finalTarget.Height
+    refreshed = "RiskFit final incurred chart refreshed"
+
+    If Len(Dir(actualChartPath)) > 0 Then
+        BTK_InsertImage ws, actualChartPath, "BTK_RiskFit_Actual_Incurred_Loss_Chart", actualTarget.Cells(1, 1), actualTarget.Width, actualTarget.Height
+        refreshed = refreshed & "; actual incurred chart refreshed"
+    Else
+        BTK_DeleteShapeIfExists ws, "BTK_RiskFit_Actual_Incurred_Loss_Chart"
+        refreshed = refreshed & "; actual incurred chart skipped"
+    End If
+
+    BTK_RefreshRiskFitCharts = refreshed & " on Risk Loss Fitting."
+End Function
+
 Private Function BTK_RefreshGNPICharts(ByVal outputFolder As String) As String
     Dim ws As Worksheet
     Dim gnpiFolder As String
@@ -358,6 +398,8 @@ Private Function GRe_ToolIdForObjective(ByVal objectiveText As String) As String
             GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "profile"
             GRe_ToolIdForObjective = "xl_pricing_tool"
+        Case "riskfit"
+            GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "curve fit risk"
             GRe_ToolIdForObjective = "curve_fit_risk"
         Case Else
@@ -373,6 +415,8 @@ Private Function GRe_ActionForObjective(ByVal objectiveText As String, ByVal act
             GRe_ActionForObjective = "agg_" & LCase$(action)
         Case "profile"
             GRe_ActionForObjective = "profile_" & LCase$(action)
+        Case "riskfit"
+            GRe_ActionForObjective = "riskfit_" & LCase$(action)
         Case Else
             GRe_ActionForObjective = LCase$(action)
     End Select
@@ -434,6 +478,12 @@ Private Sub GRe_HandleResult(ByVal toolId As String, ByVal action As String, ByV
     If refreshWorkbook And toolId = "xl_pricing_tool" And action = "profile_update" And InStr(1, resultText, "Profile update completed.", vbTextCompare) > 0 Then
         outputFolder = BTK_OutputFolderFromResult(resultText)
         resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshProfileOutput(outputFolder)
+        ThisWorkbook.Save
+    End If
+
+    If refreshWorkbook And toolId = "xl_pricing_tool" And action = "riskfit_update" And InStr(1, resultText, "RiskFit update completed.", vbTextCompare) > 0 Then
+        outputFolder = BTK_OutputFolderFromResult(resultText)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshRiskFitCharts(outputFolder)
         ThisWorkbook.Save
     End If
 
