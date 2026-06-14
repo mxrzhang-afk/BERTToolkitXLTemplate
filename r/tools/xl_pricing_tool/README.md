@@ -417,3 +417,68 @@ CG7:CS...  Fit summary
 CV7:DA...  Fit parameters
 AQ:CC      Distribution blocks controlled by native Excel formulas
 ```
+
+## Tab: CatLossOnLevel
+
+Marker:
+
+```text
+<<CatOnLevel>>
+```
+
+Implemented first-stage action:
+
+```text
+cat_onlevel_gather
+```
+
+The gather action validates the external source tab names configured on the
+active `<<CatOnLevel>>` sheet:
+
+```text
+C6 = GNPI source tab
+C7 = CPI source tab
+C8 = Aggregate source tab
+```
+
+It checks:
+
+- `C6:C8` are filled;
+- the named tabs exist in the active workbook;
+- the GNPI source has expected input headers and non-empty data in `B12:I...`;
+- the CPI source has expected inflation headers and non-empty data in `E15:H...`;
+- the aggregate source has expected input headers and non-empty data in `B12:S...`.
+
+No workbook ranges are overwritten by gather.
+
+```text
+cat_onlevel_update
+```
+
+The update action calculates the on-level handoff columns for the active
+`<<CatOnLevel>>` sheet and writes a CSV consumed by the VBA client:
+
+```text
+cat_onlevel/cat_onlevel_output.csv -> active sheet T13:U...
+```
+
+Only `T:U` is refreshed. The source tabs remain driven by `C6:C8`.
+
+Supported methods:
+
+- `Province`: sums aggregate exposure for the listed provinces, peril, and
+  from/to years.
+- `Nationwide`: sums all aggregate provinces for the row peril.
+- `Keyzone`: uses blended keyzone province flags from the configured
+  control/CPI source tab.
+- `User-defined`: first-pass placeholder, treated as `No On-level` and
+  flagged with a warning.
+- `No On-level`: returns `1` and `1`.
+- `GNPI`: looks up GNPI from the configured GNPI tab and chooses one type per
+  year using `Actual > Revised > Estimate`.
+- `CPI`: returns `from_Expo = 1` and `to_Expo` from the row `AsAt` CPI factor
+  column for `from_year`.
+
+Rows where `In Prior/Current` is blank or zero return blank output. Missing
+source years use the nearest available fallback and are counted in the action
+message.

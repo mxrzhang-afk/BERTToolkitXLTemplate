@@ -38,6 +38,12 @@ actions:
     status: discussion
   riskfit_build:
     status: discussion
+  cat_onlevel_gather:
+    status: implemented
+  cat_onlevel_update:
+    status: implemented
+  cat_onlevel_build:
+    status: not_defined
 tabs:
   Input_GNPI:
     marker: "<<GNPI>>"
@@ -292,6 +298,44 @@ tabs:
         - Loggamma
         - Weibull
         - Loglogistic
+  CatLossOnLevel:
+    marker: "<<CatOnLevel>>"
+    gather:
+      function: xl_pricing_tool_cat_onlevel_gather
+      status: implemented
+      purpose: "Validate external GNPI, CPI, and aggregate source tabs before CAT on-level calculations."
+      source_tab_controls:
+        gnpi: CatLossOnLevel!C6
+        cpi: CatLossOnLevel!C7
+        aggregate: CatLossOnLevel!C8
+      validations:
+        - "C6:C8 must be filled."
+        - "Configured source tabs must exist in the active workbook."
+        - "GNPI source must have expected B12:I12 headers and non-empty B13:I data."
+        - "CPI source must have expected E15:H15 headers and non-empty E16:H data."
+        - "Aggregate source must have expected B12:S12 headers and non-empty B13:S data."
+      output_scope: "No workbook ranges are overwritten by gather."
+    update:
+      function: xl_pricing_tool_cat_onlevel_update
+      status: implemented
+      purpose: "Calculate CatLossOnLevel from/to exposure factors using the active sheet and configured source tabs."
+      output_scope: "Only T13:U... is overwritten by the VBA refresh step."
+      supported_methods:
+        - "Province: sums aggregate exposure by listed provinces, peril, from/to years."
+        - "Nationwide: sums all aggregate provinces for the row peril."
+        - "Keyzone: sums aggregate provinces flagged as blended keyzone rows in the configured control/CPI tab."
+        - "User-defined: first-pass placeholder treated as No On-level, returning 1 and 1 with a warning."
+        - "No On-level: returns 1 and 1."
+        - "GNPI: looks up GNPI from the configured GNPI tab, with Actual/Revised/Estimate priority by year."
+        - "CPI: returns from=1 and to=the CPI factor for the row AsAt and from_year."
+      source_tab_controls:
+        gnpi: CatLossOnLevel!C6
+        cpi: CatLossOnLevel!C7
+        aggregate: CatLossOnLevel!C8
+      output_files:
+        cat_onlevel_output: cat_onlevel/cat_onlevel_output.csv
+    build:
+      status: not_defined
 required_sheets:
   - Control_Module
   - Input_GNPI

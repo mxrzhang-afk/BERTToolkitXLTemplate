@@ -96,7 +96,7 @@ Private Sub BTK_DeleteChartObjects(ByVal ws As Worksheet)
 End Sub
 
 Private Sub BTK_InsertMapImage(ByVal ws As Worksheet, ByVal imagePath As String, ByVal shapeName As String, ByVal targetCell As Range)
-    Dim picture As Shape
+    Dim picture As Object
 
     If Len(Dir(imagePath)) = 0 Then
         Err.Raise vbObjectError + 5110, BTK_SOURCE, "Map image was not created: " & imagePath
@@ -146,7 +146,7 @@ Private Sub BTK_RefreshMapImages(ByVal outputFolder As String)
 End Sub
 
 Private Sub BTK_InsertImage(ByVal ws As Worksheet, ByVal imagePath As String, ByVal shapeName As String, ByVal targetCell As Range, ByVal width As Double, ByVal height As Double)
-    Dim picture As Shape
+    Dim picture As Object
 
     If Len(Dir(imagePath)) = 0 Then
         Err.Raise vbObjectError + 5112, BTK_SOURCE, "Chart image was not created: " & imagePath
@@ -168,7 +168,7 @@ Private Sub BTK_InsertImage(ByVal ws As Worksheet, ByVal imagePath As String, By
 End Sub
 
 Private Sub BTK_InsertImageFitWidth(ByVal ws As Worksheet, ByVal imagePath As String, ByVal shapeName As String, ByVal targetCell As Range, ByVal width As Double)
-    Dim picture As Shape
+    Dim picture As Object
 
     If Len(Dir(imagePath)) = 0 Then
         Err.Raise vbObjectError + 5114, BTK_SOURCE, "Chart image was not created: " & imagePath
@@ -297,6 +297,41 @@ Private Function BTK_RefreshProfileOutput(ByVal outputFolder As String, ByVal sh
     BTK_InsertImage ws, chartPath, "BTK_Profile_SI_Composition_Chart", BTK_RangeFromSetting(ws, "L56", "K57"), 660, 370
 
     BTK_RefreshProfileOutput = "Profile R output and SI composition chart refreshed on " & sheetName & "."
+End Function
+
+Private Function BTK_RefreshCatOnLevelOutput(ByVal outputFolder As String, ByVal sheetName As String) As String
+    Dim ws As Worksheet
+    Dim catFolder As String
+    Dim outputPath As String
+    Dim lastInputRow As Long
+    Dim lastOutputRow As Long
+    Dim lastRow As Long
+
+    If Len(outputFolder) = 0 Then
+        BTK_RefreshCatOnLevelOutput = "CatOnLevel output refresh skipped: could not find output folder in R result."
+        Exit Function
+    End If
+
+    outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
+    If Right$(outputFolder, 1) <> Application.PathSeparator Then
+        outputFolder = outputFolder & Application.PathSeparator
+    End If
+
+    catFolder = outputFolder & "cat_onlevel" & Application.PathSeparator
+    outputPath = catFolder & "cat_onlevel_output.csv"
+
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    lastInputRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
+    lastOutputRow = ws.Cells(ws.Rows.Count, "T").End(xlUp).Row
+    lastRow = Application.WorksheetFunction.Max(lastInputRow, lastOutputRow)
+    If lastRow < 13 Then
+        lastRow = 13
+    End If
+
+    ws.Range("T13:U" & lastRow).ClearContents
+    BTK_LoadCsvToRange outputPath, ws.Range("T13")
+
+    BTK_RefreshCatOnLevelOutput = "CatOnLevel output refreshed on " & sheetName & "."
 End Function
 
 Private Function BTK_RefreshRiskFitCharts(ByVal outputFolder As String, ByVal sheetName As String) As String
@@ -452,6 +487,8 @@ Private Function GRe_ToolIdForObjective(ByVal objectiveText As String) As String
             GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "riskfit"
             GRe_ToolIdForObjective = "xl_pricing_tool"
+        Case "catonlevel", "cat onlevel", "cat on level"
+            GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "curve fit risk"
             GRe_ToolIdForObjective = "curve_fit_risk"
         Case Else
@@ -469,6 +506,8 @@ Private Function GRe_ActionForObjective(ByVal objectiveText As String, ByVal act
             GRe_ActionForObjective = "profile_" & LCase$(action)
         Case "riskfit"
             GRe_ActionForObjective = "riskfit_" & LCase$(action)
+        Case "catonlevel", "cat onlevel", "cat on level"
+            GRe_ActionForObjective = "cat_onlevel_" & LCase$(action)
         Case Else
             GRe_ActionForObjective = LCase$(action)
     End Select
@@ -540,6 +579,12 @@ Private Sub GRe_HandleResult(ByVal toolId As String, ByVal action As String, ByV
         ThisWorkbook.Save
     End If
 
+    If refreshWorkbook And toolId = "xl_pricing_tool" And action = "cat_onlevel_update" And InStr(1, resultText, "CatOnLevel update completed.", vbTextCompare) > 0 Then
+        outputFolder = BTK_OutputFolderFromResult(resultText)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshCatOnLevelOutput(outputFolder, activeSheetName)
+        ThisWorkbook.Save
+    End If
+
     MsgBox resultText, vbInformation, "GRe Tools"
 End Sub
 
@@ -586,15 +631,27 @@ Public Sub GRe_Build()
     GRe_Dispatch "build"
 End Sub
 
-Public Sub GRe_RibbonGather(ByVal control As IRibbonControl)
+Public Sub GRe_RibbonGather(ByVal control As Object)
     GRe_Gather
 End Sub
 
-Public Sub GRe_RibbonUpdate(ByVal control As IRibbonControl)
+Public Sub GRe_RibbonUpdate(ByVal control As Object)
     GRe_Update
 End Sub
 
-Public Sub GRe_RibbonBuild(ByVal control As IRibbonControl)
+Public Sub GRe_RibbonBuild(ByVal control As Object)
+    GRe_Build
+End Sub
+
+Public Sub GRe_RibbonGatherFallback()
+    GRe_Gather
+End Sub
+
+Public Sub GRe_RibbonUpdateFallback()
+    GRe_Update
+End Sub
+
+Public Sub GRe_RibbonBuildFallback()
     GRe_Build
 End Sub
 
