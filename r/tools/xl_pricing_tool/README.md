@@ -52,6 +52,13 @@ By default, outputs are written to a stable workbook-local folder:
 <workbook folder>\_BERTToolkitTemp\xl_pricing_tool\
 ```
 
+The branch roadmap and V1 configuration contract for the `Sim_Variations`
+`<<XLSimulation>>` tab is maintained in:
+
+```text
+docs/XL_SIMULATION_TOOL_ROADMAP.md
+```
+
 ## Tab: Input_GNPI
 
 Marker:

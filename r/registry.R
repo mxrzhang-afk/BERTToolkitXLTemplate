@@ -10,6 +10,7 @@ source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "agg.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "profile.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "riskfit.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "cat_onlevel.R"))
+source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "xlsimulation.R"))
 source(file.path(BTK_ROOT, "r", "tools", "curve_fit_risk", "tool.R"))
 
 toolkit_version <- function() {
@@ -45,7 +46,10 @@ toolkit_registry <- function() {
         riskfit_build = xl_pricing_tool_riskfit_build,
         cat_onlevel_gather = xl_pricing_tool_cat_onlevel_gather,
         cat_onlevel_update = xl_pricing_tool_cat_onlevel_update,
-        cat_onlevel_build = xl_pricing_tool_cat_onlevel_build
+        cat_onlevel_build = xl_pricing_tool_cat_onlevel_build,
+        xlsimulation_gather = xl_pricing_tool_xlsimulation_gather,
+        xlsimulation_update = xl_pricing_tool_xlsimulation_update,
+        xlsimulation_build = xl_pricing_tool_xlsimulation_build
       ),
       run = xl_pricing_tool_update,
       validate = xl_pricing_tool_validate,

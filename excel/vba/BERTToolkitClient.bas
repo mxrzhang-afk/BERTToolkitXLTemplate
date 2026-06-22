@@ -234,6 +234,199 @@ Private Sub BTK_LoadCsvToRange(ByVal csvPath As String, ByVal destination As Ran
     End With
 End Sub
 
+Private Function BTK_DefaultRunDir(ByVal toolId As String) As String
+    BTK_DefaultRunDir = ThisWorkbook.Path & Application.PathSeparator & "_BERTToolkitTemp" & Application.PathSeparator & toolId
+End Function
+
+Private Sub BTK_EnsureFolder(ByVal folderPath As String)
+    Dim parts() As String
+    Dim currentPath As String
+    Dim i As Long
+
+    folderPath = Replace(folderPath, "/", Application.PathSeparator)
+    If Right$(folderPath, 1) = Application.PathSeparator Then
+        folderPath = Left$(folderPath, Len(folderPath) - 1)
+    End If
+    If Len(folderPath) = 0 Or Len(Dir(folderPath, vbDirectory)) > 0 Then
+        Exit Sub
+    End If
+
+    parts = Split(folderPath, Application.PathSeparator)
+    currentPath = parts(LBound(parts))
+    For i = LBound(parts) + 1 To UBound(parts)
+        currentPath = currentPath & Application.PathSeparator & parts(i)
+        If Len(Dir(currentPath, vbDirectory)) = 0 Then
+            MkDir currentPath
+        End If
+    Next i
+End Sub
+
+Private Function BTK_CsvEscape(ByVal value As Variant) As String
+    Dim text As String
+
+    If IsError(value) Or IsEmpty(value) Or IsNull(value) Then
+        text = ""
+    Else
+        text = CStr(value)
+    End If
+
+    text = Replace(text, """", """""")
+    BTK_CsvEscape = """" & text & """"
+End Function
+
+Private Function BTK_SafeFileName(ByVal value As String) As String
+    Dim badChars As Variant
+    Dim i As Long
+
+    value = Trim$(value)
+    badChars = Array("\", "/", ":", "*", "?", """", "<", ">", "|", " ")
+    For i = LBound(badChars) To UBound(badChars)
+        value = Replace(value, CStr(badChars(i)), "_")
+    Next i
+    If Len(value) = 0 Then
+        value = "source"
+    End If
+    BTK_SafeFileName = value
+End Function
+
+Private Sub BTK_WriteCsvRow(ByVal fileNo As Integer, ByRef values() As String)
+    Dim i As Long
+    Dim line As String
+
+    line = values(LBound(values))
+    For i = LBound(values) + 1 To UBound(values)
+        line = line & "," & values(i)
+    Next i
+    Print #fileNo, line
+End Sub
+
+Private Function BTK_ExportRangeToCsv(ByVal sourceRange As Range, ByVal csvPath As String) As Long
+    Const CHUNK_ROWS As Long = 5000
+    Dim found As Range
+    Dim lastRowOffset As Long
+    Dim startOffset As Long
+    Dim rowCount As Long
+    Dim values As Variant
+    Dim fileNo As Integer
+    Dim r As Long
+    Dim c As Long
+    Dim lineValues() As String
+
+    Set found = sourceRange.Find(What:="*", After:=sourceRange.Cells(1, 1), LookIn:=xlFormulas, LookAt:=xlPart, SearchOrder:=xlByRows, SearchDirection:=xlPrevious, MatchCase:=False)
+    If found Is Nothing Then
+        lastRowOffset = 1
+    Else
+        lastRowOffset = found.Row - sourceRange.Row + 1
+        If lastRowOffset < 1 Then
+            lastRowOffset = 1
+        End If
+    End If
+
+    fileNo = FreeFile
+    Open csvPath For Output As #fileNo
+    ReDim lineValues(1 To sourceRange.Columns.Count)
+
+    For startOffset = 1 To lastRowOffset Step CHUNK_ROWS
+        rowCount = Application.WorksheetFunction.Min(CHUNK_ROWS, lastRowOffset - startOffset + 1)
+        values = sourceRange.Cells(startOffset, 1).Resize(rowCount, sourceRange.Columns.Count).Value2
+        If rowCount = 1 And sourceRange.Columns.Count = 1 Then
+            lineValues(1) = BTK_CsvEscape(values)
+            BTK_WriteCsvRow fileNo, lineValues
+        Else
+            For r = 1 To rowCount
+                For c = 1 To sourceRange.Columns.Count
+                    lineValues(c) = BTK_CsvEscape(values(r, c))
+                Next c
+                BTK_WriteCsvRow fileNo, lineValues
+            Next r
+        End If
+    Next startOffset
+
+    Close #fileNo
+    BTK_ExportRangeToCsv = lastRowOffset
+End Function
+
+Private Function BTK_PrepareXLSimulationUpdateInputs(ByVal sheetName As String, ByVal outputFolder As String) As String
+    Dim ws As Worksheet
+    Dim sourceFolder As String
+    Dim manifestPath As String
+    Dim manifestNo As Integer
+    Dim row As Long
+    Dim causeId As String
+    Dim causeFamily As String
+    Dim modelSource As String
+    Dim activeFlag As String
+    Dim locationText As String
+    Dim sourceRange As Range
+    Dim csvPath As String
+    Dim exportedRows As Long
+    Dim manifestRow() As String
+
+    outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
+    If Right$(outputFolder, 1) <> Application.PathSeparator Then
+        outputFolder = outputFolder & Application.PathSeparator
+    End If
+
+    sourceFolder = outputFolder & "xlsimulation" & Application.PathSeparator & "source_inputs"
+    BTK_EnsureFolder sourceFolder
+    manifestPath = sourceFolder & Application.PathSeparator & "xlsimulation_source_manifest.csv"
+
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    manifestNo = FreeFile
+    Open manifestPath For Output As #manifestNo
+    ReDim manifestRow(1 To 8)
+
+    manifestRow(1) = BTK_CsvEscape("CauseID")
+    manifestRow(2) = BTK_CsvEscape("CauseFamily")
+    manifestRow(3) = BTK_CsvEscape("ModelSource")
+    manifestRow(4) = BTK_CsvEscape("Location")
+    manifestRow(5) = BTK_CsvEscape("CsvPath")
+    manifestRow(6) = BTK_CsvEscape("Rows")
+    manifestRow(7) = BTK_CsvEscape("Cols")
+    manifestRow(8) = BTK_CsvEscape("ExportedBy")
+    BTK_WriteCsvRow manifestNo, manifestRow
+
+    For row = 50 To 61
+        causeId = Trim$(CStr(ws.Cells(row, "B").Value))
+        causeFamily = Trim$(CStr(ws.Cells(row, "C").Value))
+        modelSource = Trim$(CStr(ws.Cells(row, "D").Value))
+        activeFlag = UCase$(Trim$(CStr(ws.Cells(row, "H").Value)))
+        locationText = Trim$(CStr(ws.Cells(row, "J").Value))
+
+        If Len(causeId) > 0 And activeFlag = "Y" Then
+            If Len(locationText) = 0 Then
+                Err.Raise vbObjectError + 5120, BTK_SOURCE, "XLSimulation active cause has no Location: " & causeId
+            End If
+
+            Set sourceRange = Nothing
+            On Error Resume Next
+            Set sourceRange = ws.Range(locationText)
+            On Error GoTo 0
+            If sourceRange Is Nothing Then
+                Err.Raise vbObjectError + 5121, BTK_SOURCE, "XLSimulation active cause has invalid Location: " & causeId & " = " & locationText
+            End If
+
+            csvPath = sourceFolder & Application.PathSeparator & BTK_SafeFileName(causeId) & ".csv"
+            exportedRows = BTK_ExportRangeToCsv(sourceRange, csvPath)
+
+            manifestRow(1) = BTK_CsvEscape(causeId)
+            manifestRow(2) = BTK_CsvEscape(causeFamily)
+            manifestRow(3) = BTK_CsvEscape(modelSource)
+            manifestRow(4) = BTK_CsvEscape(locationText)
+            manifestRow(5) = BTK_CsvEscape(csvPath)
+            manifestRow(6) = BTK_CsvEscape(CStr(exportedRows))
+            manifestRow(7) = BTK_CsvEscape(CStr(sourceRange.Columns.Count))
+            manifestRow(8) = BTK_CsvEscape("VBA")
+            BTK_WriteCsvRow manifestNo, manifestRow
+
+            Set sourceRange = Nothing
+        End If
+    Next row
+
+    Close #manifestNo
+    BTK_PrepareXLSimulationUpdateInputs = outputFolder
+End Function
+
 Private Function BTK_RefreshAggOutput(ByVal outputFolder As String, ByVal sheetName As String) As String
     Dim ws As Worksheet
     Dim aggFolder As String
@@ -332,6 +525,68 @@ Private Function BTK_RefreshCatOnLevelOutput(ByVal outputFolder As String, ByVal
     BTK_LoadCsvToRange outputPath, ws.Range("T13")
 
     BTK_RefreshCatOnLevelOutput = "CatOnLevel output refreshed on " & sheetName & "."
+End Function
+
+Private Function BTK_RefreshXLSimulationGather(ByVal outputFolder As String, ByVal sheetName As String) As String
+    Dim ws As Worksheet
+    Dim simFolder As String
+    Dim coveragePath As String
+    Dim breakdownPath As String
+
+    If Len(outputFolder) = 0 Then
+        BTK_RefreshXLSimulationGather = "XLSimulation gather refresh skipped: could not find output folder in R result."
+        Exit Function
+    End If
+
+    outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
+    If Right$(outputFolder, 1) <> Application.PathSeparator Then
+        outputFolder = outputFolder & Application.PathSeparator
+    End If
+
+    simFolder = outputFolder & "xlsimulation" & Application.PathSeparator
+    coveragePath = simFolder & "xlsimulation_coverage_matrix.csv"
+    breakdownPath = simFolder & "xlsimulation_layer_breakdown.csv"
+
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    ws.Range("M49:V61").ClearContents
+    ws.Range("AE26:AO41").ClearContents
+    BTK_LoadCsvToRange coveragePath, ws.Range("M49")
+    BTK_LoadCsvToRange breakdownPath, ws.Range("AE26")
+
+    BTK_RefreshXLSimulationGather = "XLSimulation coverage matrix and breakdown headers refreshed on " & sheetName & "."
+End Function
+
+Private Function BTK_RefreshXLSimulationUpdate(ByVal outputFolder As String, ByVal sheetName As String) As String
+    Dim ws As Worksheet
+    Dim simFolder As String
+    Dim layerOutputPath As String
+    Dim breakdownPath As String
+    Dim oepPath As String
+
+    If Len(outputFolder) = 0 Then
+        BTK_RefreshXLSimulationUpdate = "XLSimulation update refresh skipped: could not find output folder in R result."
+        Exit Function
+    End If
+
+    outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
+    If Right$(outputFolder, 1) <> Application.PathSeparator Then
+        outputFolder = outputFolder & Application.PathSeparator
+    End If
+
+    simFolder = outputFolder & "xlsimulation" & Application.PathSeparator
+    layerOutputPath = simFolder & "xlsimulation_layer_output.csv"
+    breakdownPath = simFolder & "xlsimulation_layer_breakdown.csv"
+    oepPath = simFolder & "xlsimulation_oep_output.csv"
+
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    ws.Range("J26:AB41").ClearContents
+    ws.Range("AE26:AO41").ClearContents
+    ws.Range("B107:AW121").ClearContents
+    BTK_LoadCsvToRange layerOutputPath, ws.Range("J26")
+    BTK_LoadCsvToRange breakdownPath, ws.Range("AE26")
+    BTK_LoadCsvToRange oepPath, ws.Range("B107")
+
+    BTK_RefreshXLSimulationUpdate = "XLSimulation layer output, breakdown, and OEP tables refreshed on " & sheetName & "."
 End Function
 
 Private Function BTK_RefreshRiskFitCharts(ByVal outputFolder As String, ByVal sheetName As String) As String
@@ -489,6 +744,8 @@ Private Function GRe_ToolIdForObjective(ByVal objectiveText As String) As String
             GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "catonlevel", "cat onlevel", "cat on level"
             GRe_ToolIdForObjective = "xl_pricing_tool"
+        Case "xlsimulation", "xl simulation", "xl simulations", "sim variations"
+            GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "curve fit risk"
             GRe_ToolIdForObjective = "curve_fit_risk"
         Case Else
@@ -508,6 +765,8 @@ Private Function GRe_ActionForObjective(ByVal objectiveText As String, ByVal act
             GRe_ActionForObjective = "riskfit_" & LCase$(action)
         Case "catonlevel", "cat onlevel", "cat on level"
             GRe_ActionForObjective = "cat_onlevel_" & LCase$(action)
+        Case "xlsimulation", "xl simulation", "xl simulations", "sim variations"
+            GRe_ActionForObjective = "xlsimulation_" & LCase$(action)
         Case Else
             GRe_ActionForObjective = LCase$(action)
     End Select
@@ -585,6 +844,18 @@ Private Sub GRe_HandleResult(ByVal toolId As String, ByVal action As String, ByV
         ThisWorkbook.Save
     End If
 
+    If refreshWorkbook And toolId = "xl_pricing_tool" And action = "xlsimulation_gather" And InStr(1, resultText, "XLSimulation gather completed.", vbTextCompare) > 0 Then
+        outputFolder = BTK_OutputFolderFromResult(resultText)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshXLSimulationGather(outputFolder, activeSheetName)
+        ThisWorkbook.Save
+    End If
+
+    If refreshWorkbook And toolId = "xl_pricing_tool" And action = "xlsimulation_update" And InStr(1, resultText, "XLSimulation update completed.", vbTextCompare) > 0 Then
+        outputFolder = BTK_OutputFolderFromResult(resultText)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshXLSimulationUpdate(outputFolder, activeSheetName)
+        ThisWorkbook.Save
+    End If
+
     MsgBox resultText, vbInformation, "GRe Tools"
 End Sub
 
@@ -594,6 +865,7 @@ Public Sub GRe_Dispatch(ByVal action As String)
     Dim actionName As String
     Dim result As Variant
     Dim activeSheetName As String
+    Dim outputDir As String
 
     On Error GoTo DispatchFailed
 
@@ -611,7 +883,12 @@ Public Sub GRe_Dispatch(ByVal action As String)
     End If
 
     actionName = GRe_ActionForObjective(objectiveText, action)
-    result = BTK_DispatchTool(toolId, actionName, "", activeSheetName)
+    outputDir = ""
+    If toolId = "xl_pricing_tool" And actionName = "xlsimulation_update" Then
+        outputDir = BTK_PrepareXLSimulationUpdateInputs(activeSheetName, BTK_DefaultRunDir(toolId))
+    End If
+
+    result = BTK_DispatchTool(toolId, actionName, outputDir, activeSheetName)
     GRe_HandleResult toolId, actionName, result, True, activeSheetName
     Exit Sub
 

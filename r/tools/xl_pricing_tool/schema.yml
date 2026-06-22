@@ -44,6 +44,12 @@ actions:
     status: implemented
   cat_onlevel_build:
     status: not_defined
+  xlsimulation_gather:
+    status: implemented
+  xlsimulation_update:
+    status: implemented
+  xlsimulation_build:
+    status: reserved
 tabs:
   Input_GNPI:
     marker: "<<GNPI>>"
