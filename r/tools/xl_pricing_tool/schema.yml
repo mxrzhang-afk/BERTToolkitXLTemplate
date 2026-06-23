@@ -147,8 +147,10 @@ tabs:
         mode: overwrite_output_block_and_insert_chart
     build:
       function: xl_pricing_tool_profile_build
-      status: planned
-      purpose: "Generate a combined simulated loss table after the curve mechanics and output schema are approved."
+      status: implemented
+      purpose: "Generate XLsimulation-compatible CDF loss cause source blocks from exposure profiles, ELR, subject premium, MBBEFD curves, and ILF curves."
+      outputs:
+        - _BERTToolkitTemp/xl_pricing_tool/profile/build/<LossCause>_cdf.csv
     inputs:
       risk_profile_table:
         range: Input_Profile!B12:I...
@@ -175,8 +177,36 @@ tabs:
         used_columns:
           - LOB
           - LossCause
+          - ELR
           - SubjectPrem
           - ActualPrem
+          - Curve
+          - CurrencyAdj
+          - b
+          - g
+      build_controls:
+        range: Input_Profile!M4:M6
+        fields:
+          - Minimum Loss / threshold
+          - Loss Cap
+          - Percentile Steps
+      mb_curves:
+        range: MBCurves!A3:C...
+        columns:
+          - Curve
+          - b
+          - g
+      ilf_curves:
+        range: ILFCurves!A1:AD...
+        columns:
+          - Curve
+          - LOB
+          - Default
+          - State
+          - Table
+          - GCIdx
+          - mu_1..mu_12
+          - w_1..w_12
       chart_band_cuts:
         range: Input_Profile!K37:K44
         rule: "Band Cut label and trailing blanks are allowed. Nonblank cut values must be numeric and nonnegative, and at least two unique cut points must be present."
@@ -188,6 +218,10 @@ tabs:
       adj_expo_in_layer: "expo_in_layer * SubjectPrem / ActualPrem"
       coverage_lob_delimiters: "comma, slash, semicolon"
       blank_coverage_lobs: include_all_lobs
+      build_expected_loss: "SubjectPrem * ELR"
+      build_mean_frequency: "ExpectedLoss / ConditionalMeanSeverity"
+      build_percentile_rows: "Percentile Steps + 1, including 0 and 1"
+      build_threshold: "Losses below Minimum Loss are ignored rather than floored; generated CDF is conditional on exceeding Minimum Loss."
       si_composition_chart: "100% stacked bar chart by AsAt, faceted by K47:K55 LOB specs, with Avg_SI bands from K37:K44."
       output_scope: "Only BG:BT / BH:BS R output block is overwritten by VBA."
   Risk Loss Fitting:

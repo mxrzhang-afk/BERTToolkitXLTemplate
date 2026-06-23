@@ -57,7 +57,86 @@ xl_pricing_tool_profile_gather <- function(workbook_path, output_dir = NULL, con
 }
 
 xl_pricing_tool_profile_build <- function(workbook_path, output_dir = NULL, context = list()) {
-  "Profile build is not implemented yet. This stage will generate the simulated loss table after the schema and curve mechanics are approved."
+  xl_pricing_tool_validate(workbook_path, context)
+
+  if (is.null(output_dir) || identical(output_dir, "")) {
+    output_dir <- if (!is.null(context$output_dir)) {
+      context$output_dir
+    } else {
+      btk_default_run_dir("xl_pricing_tool", workbook_path)
+    }
+  }
+
+  build_dir <- file.path(output_dir, "profile", "build")
+  dir.create(build_dir, recursive = TRUE, showWarnings = FALSE)
+
+  sheet <- xl_pricing_tool_action_sheet(workbook_path, context, "Input_Profile")
+  mb_curves <- xl_pricing_tool_profile_read_mb_curves(xl_pricing_tool_read_sheet(workbook_path, "MBCurves"))
+  ilf_curves <- xl_pricing_tool_profile_read_ilf_curves(xl_pricing_tool_read_sheet(workbook_path, "ILFCurves"))
+
+  profile_input <- xl_pricing_tool_profile_read_input(sheet)
+  controls <- xl_pricing_tool_profile_read_build_controls(sheet)
+  configs <- xl_pricing_tool_profile_read_build_configs(sheet)
+  if (nrow(configs) == 0) {
+    stop("Input_Profile build has no active loss cause rows in M13:U20 or M24:U31.", call. = FALSE)
+  }
+
+  duplicated_causes <- unique(configs$LossCause[duplicated(configs$LossCause)])
+  if (length(duplicated_causes) > 0) {
+    stop(sprintf("Input_Profile build loss cause names must be unique: %s", paste(duplicated_causes, collapse = ", ")), call. = FALSE)
+  }
+
+  output_files <- character(nrow(configs))
+  for (i in seq_len(nrow(configs))) {
+    config <- configs[i, , drop = FALSE]
+    profile_rows <- profile_input[profile_input$AsAt == config$AsAt & profile_input$LOB == config$LOB, , drop = FALSE]
+    if (nrow(profile_rows) == 0) {
+      stop(sprintf("Input_Profile build has no profile rows for %s/%s.", config$AsAt, config$LOB), call. = FALSE)
+    }
+
+    curve_family <- xl_pricing_tool_profile_curve_family(config$CurveName, mb_curves, ilf_curves)
+    if (identical(curve_family, "MBBEFD")) {
+      cdf <- xl_pricing_tool_profile_mbbefd_loss_cdf(profile_rows, config, controls)
+    } else {
+      curve <- ilf_curves[[config$CurveName]]
+      cdf <- xl_pricing_tool_profile_ilf_loss_cdf(curve, controls)
+    }
+
+    mean_severity <- xl_pricing_tool_profile_cdf_mean(cdf)
+    expected_loss <- config$SubjectPrem * config$ELR
+    if (!is.finite(mean_severity) || mean_severity <= 0) {
+      stop(sprintf("Input_Profile build produced nonpositive mean severity for %s.", config$LossCause), call. = FALSE)
+    }
+    mean_frequency <- expected_loss / mean_severity
+
+    block <- xl_pricing_tool_profile_xlsimulation_cdf_block(
+      mean_frequency = mean_frequency,
+      min_loss = controls$MinimumLoss,
+      loss_cap = controls$LossCap,
+      cdf = cdf
+    )
+    output_file <- file.path(build_dir, paste0(xl_pricing_tool_profile_safe_filename(config$LossCause), "_cdf.csv"))
+    utils::write.table(
+      block,
+      file = output_file,
+      sep = ",",
+      row.names = FALSE,
+      col.names = FALSE,
+      na = "",
+      quote = TRUE
+    )
+    output_files[[i]] <- output_file
+  }
+
+  paste(
+    "Profile build completed.",
+    sprintf("Output folder: %s", output_dir),
+    sprintf("Build output folder: %s", build_dir),
+    sprintf("Loss cause files: %s", length(output_files)),
+    sprintf("Files: %s", paste(basename(output_files), collapse = ", ")),
+    "CSV files are XLsimulation-compatible CDF source blocks.",
+    sep = vb_newline()
+  )
 }
 
 xl_pricing_tool_profile_read_input <- function(sheet) {
@@ -533,6 +612,241 @@ xl_pricing_tool_profile_match_lobs <- function(tokens, available_lobs) {
     }
   }
   unique(matched)
+}
+
+xl_pricing_tool_profile_read_build_controls <- function(sheet) {
+  min_loss <- xl_pricing_tool_profile_number(sheet, "M", 4, "Minimum Loss", required = TRUE)
+  loss_cap <- xl_pricing_tool_profile_number(sheet, "M", 5, "Loss Cap", required = TRUE)
+  steps <- xl_pricing_tool_profile_number(sheet, "M", 6, "Percentile Steps", required = TRUE)
+
+  if (min_loss < 0 || loss_cap <= 0 || loss_cap <= min_loss) {
+    stop("Input_Profile build controls require 0 <= M4 Minimum Loss < M5 Loss Cap.", call. = FALSE)
+  }
+  if (!is.finite(steps) || steps < 1 || abs(steps - round(steps)) > 1e-8) {
+    stop("Input_Profile M6 Percentile Steps must be a positive whole number.", call. = FALSE)
+  }
+
+  list(
+    MinimumLoss = min_loss,
+    LossCap = loss_cap,
+    PercentileSteps = as.integer(round(steps)),
+    Percentiles = seq(0, 1, length.out = as.integer(round(steps)) + 1L)
+  )
+}
+
+xl_pricing_tool_profile_read_build_configs <- function(sheet) {
+  rows <- list()
+  for (row in c(13:20, 24:31)) {
+    lob <- trimws(xl_pricing_tool_cell_value(sheet, paste0("M", row)))
+    loss_cause <- trimws(xl_pricing_tool_cell_value(sheet, paste0("N", row)))
+    if (!nzchar(lob) || !nzchar(loss_cause) || identical(tolower(lob), "lob")) {
+      next
+    }
+
+    as_at <- if (row <= 20) "Prior" else "Current"
+    elr <- xl_pricing_tool_profile_number(sheet, "O", row, "ELR", required = TRUE)
+    subject_prem <- xl_pricing_tool_profile_number(sheet, "P", row, "SubjectPrem", required = TRUE)
+    actual_prem <- xl_pricing_tool_profile_number(sheet, "Q", row, "ActualPrem", required = FALSE)
+    curve_name <- trimws(xl_pricing_tool_cell_value(sheet, paste0("R", row)))
+    currency_adj <- xl_pricing_tool_profile_number(sheet, "S", row, "CurrencyAdj", required = FALSE)
+    param_1 <- xl_pricing_tool_profile_number(sheet, "T", row, "Curve parameter T", required = FALSE)
+    param_2 <- xl_pricing_tool_profile_number(sheet, "U", row, "Curve parameter U", required = FALSE)
+
+    if (elr < 0 || subject_prem < 0 || actual_prem < 0) {
+      stop(sprintf("Input_Profile build row %s has negative ELR, SubjectPrem, or ActualPrem.", row), call. = FALSE)
+    }
+    if (!nzchar(curve_name)) {
+      stop(sprintf("Input_Profile build row %s has blank curve selection in column R.", row), call. = FALSE)
+    }
+
+    rows[[length(rows) + 1L]] <- data.frame(
+      Row = row,
+      AsAt = as_at,
+      LOB = lob,
+      LossCause = loss_cause,
+      ELR = elr,
+      SubjectPrem = subject_prem,
+      ActualPrem = actual_prem,
+      CurveName = curve_name,
+      CurrencyAdj = currency_adj,
+      Param1 = param_1,
+      Param2 = param_2,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  if (length(rows) == 0) {
+    return(data.frame())
+  }
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+xl_pricing_tool_profile_read_mb_curves <- function(sheet) {
+  curves <- list()
+  for (row in 4:(4 + 500)) {
+    curve <- trimws(xl_pricing_tool_cell_value(sheet, paste0("A", row)))
+    if (!nzchar(curve)) {
+      next
+    }
+    b <- xl_pricing_tool_profile_number(sheet, "B", row, "MBCurves b", required = TRUE)
+    g <- xl_pricing_tool_profile_number(sheet, "C", row, "MBCurves g", required = TRUE)
+    if (b <= 0 || g <= 1) {
+      stop(sprintf("MBCurves row %s requires b > 0 and g > 1.", row), call. = FALSE)
+    }
+    curves[[curve]] <- list(CurveName = curve, b = b, g = g)
+  }
+  curves
+}
+
+xl_pricing_tool_profile_read_ilf_curves <- function(sheet) {
+  curves <- list()
+  for (row in 2:(2 + 500)) {
+    curve <- trimws(xl_pricing_tool_cell_value(sheet, paste0("A", row)))
+    if (!nzchar(curve)) {
+      next
+    }
+
+    mu <- vapply(7:18, function(col) {
+      suppressWarnings(as.numeric(xl_pricing_tool_cell_value(sheet, paste0(xl_pricing_tool_col_name(col), row))))
+    }, numeric(1))
+    weights <- vapply(19:30, function(col) {
+      suppressWarnings(as.numeric(xl_pricing_tool_cell_value(sheet, paste0(xl_pricing_tool_col_name(col), row))))
+    }, numeric(1))
+
+    keep <- is.finite(mu) & mu > 0 & is.finite(weights) & weights > 0
+    if (!any(keep)) {
+      stop(sprintf("ILFCurves row %s has no positive mu/weight pairs.", row), call. = FALSE)
+    }
+    mu <- mu[keep]
+    weights <- weights[keep] / sum(weights[keep])
+
+    curves[[curve]] <- list(
+      CurveName = curve,
+      LOB = trimws(xl_pricing_tool_cell_value(sheet, paste0("B", row))),
+      Default = trimws(xl_pricing_tool_cell_value(sheet, paste0("C", row))),
+      Table = trimws(xl_pricing_tool_cell_value(sheet, paste0("E", row))),
+      mu = mu,
+      weights = weights
+    )
+  }
+  curves
+}
+
+xl_pricing_tool_profile_curve_family <- function(curve_name, mb_curves, ilf_curves) {
+  in_mb <- curve_name %in% names(mb_curves)
+  in_ilf <- curve_name %in% names(ilf_curves)
+  if (isTRUE(in_mb) && !isTRUE(in_ilf)) {
+    return("MBBEFD")
+  }
+  if (isTRUE(in_ilf) && !isTRUE(in_mb)) {
+    return("ILF")
+  }
+  if (isTRUE(in_mb) && isTRUE(in_ilf)) {
+    stop(sprintf("Profile build curve '%s' exists in both MBCurves and ILFCurves.", curve_name), call. = FALSE)
+  }
+  stop(sprintf("Profile build curve '%s' was not found in MBCurves or ILFCurves.", curve_name), call. = FALSE)
+}
+
+xl_pricing_tool_profile_mbbefd_loss_cdf <- function(profile_rows, config, controls) {
+  avg_si <- ifelse(profile_rows$Nrisk > 0, profile_rows$SI / profile_rows$Nrisk, NA_real_)
+  weights <- profile_rows$Nrisk
+  keep <- is.finite(avg_si) & avg_si > 0 & is.finite(weights) & weights > 0
+  if (!any(keep)) {
+    stop(sprintf("Input_Profile build has no positive AvgSI/Nrisk rows for %s.", config$LossCause), call. = FALSE)
+  }
+  avg_si <- avg_si[keep]
+  weights <- weights[keep] / sum(weights[keep])
+
+  b <- config$Param1
+  g <- config$Param2
+  if (!is.finite(b) || b <= 0 || !is.finite(g) || g <= 1) {
+    stop(sprintf("Input_Profile build row %s requires MBBEFD b > 0 and g > 1 in T:U.", config$Row), call. = FALSE)
+  }
+
+  cdf_fun <- function(loss) {
+    ratio <- pmin(pmax(loss / avg_si, 0), 1)
+    sum(weights * xl_pricing_tool_profile_pmbbefd(ratio, g = g, b = b))
+  }
+  xl_pricing_tool_profile_invert_cdf(cdf_fun, controls)
+}
+
+xl_pricing_tool_profile_ilf_loss_cdf <- function(curve, controls) {
+  cdf_fun <- function(loss) {
+    sum(curve$weights * (1 - exp(-loss / curve$mu)))
+  }
+  xl_pricing_tool_profile_invert_cdf(cdf_fun, controls)
+}
+
+xl_pricing_tool_profile_pmbbefd <- function(x, g, b) {
+  x <- pmin(pmax(x, 0), 1)
+  top <- exp(b * log(g)) - exp(b * log(g - x))
+  bottom <- exp(b * log(g)) - exp(b * log(g - 1))
+  pmin(pmax(top / bottom, 0), 1)
+}
+
+xl_pricing_tool_profile_invert_cdf <- function(cdf_fun, controls) {
+  percentiles <- controls$Percentiles
+  losses <- numeric(length(percentiles))
+  lower <- controls$MinimumLoss
+  upper <- controls$LossCap
+  cdf_lower <- cdf_fun(lower)
+  cdf_upper <- cdf_fun(upper)
+  if (!is.finite(cdf_lower) || !is.finite(cdf_upper) || cdf_upper <= cdf_lower) {
+    stop("Profile build curve has no probability mass between Minimum Loss and Loss Cap.", call. = FALSE)
+  }
+
+  for (i in seq_along(percentiles)) {
+    p <- percentiles[[i]]
+    target <- cdf_lower + p * (cdf_upper - cdf_lower)
+    if (p <= 0) {
+      losses[[i]] <- lower
+    } else if (p >= 1) {
+      losses[[i]] <- upper
+    } else {
+      losses[[i]] <- uniroot(function(x) cdf_fun(x) - target, lower = lower, upper = upper, tol = 1e-7 * max(1, upper))$root
+    }
+  }
+
+  data.frame(
+    Percentile = percentiles,
+    LossSeverity = pmin(pmax(losses, lower), upper),
+    stringsAsFactors = FALSE
+  )
+}
+
+xl_pricing_tool_profile_cdf_mean <- function(cdf) {
+  p <- cdf$Percentile
+  q <- cdf$LossSeverity
+  sum(diff(p) * (head(q, -1L) + tail(q, -1L)) / 2)
+}
+
+xl_pricing_tool_profile_xlsimulation_cdf_block <- function(mean_frequency, min_loss, loss_cap, cdf) {
+  rows <- list(
+    c("Parameter", "Value"),
+    c("Mean Frequency", format(mean_frequency, scientific = FALSE, trim = TRUE)),
+    c("Frequency Type", "Poisson"),
+    c("Interpolation", "Linear"),
+    c("Loss Cap", format(loss_cap, scientific = FALSE, trim = TRUE)),
+    c("Minimum Loss", format(min_loss, scientific = FALSE, trim = TRUE)),
+    c("Percentile", "Loss Severity")
+  )
+
+  for (i in seq_len(nrow(cdf))) {
+    rows[[length(rows) + 1L]] <- c(
+      format(cdf$Percentile[[i]], scientific = FALSE, trim = TRUE),
+      format(cdf$LossSeverity[[i]], scientific = FALSE, trim = TRUE)
+    )
+  }
+  as.data.frame(do.call(rbind, rows), stringsAsFactors = FALSE)
+}
+
+xl_pricing_tool_profile_safe_filename <- function(value) {
+  out <- gsub("[^A-Za-z0-9_.-]+", "_", trimws(as.character(value)))
+  out <- gsub("_+", "_", out)
+  out <- gsub("^_+|_+$", "", out)
+  if (!nzchar(out)) "loss_cause" else out
 }
 
 xl_pricing_tool_profile_number <- function(sheet, col, row, field_name, required = TRUE) {

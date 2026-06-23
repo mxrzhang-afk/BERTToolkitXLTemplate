@@ -212,7 +212,8 @@ Default behavior:
 
 - `gather`: not defined when `Gather From` is blank.
 - `update`: calculate exposure-in-layer and refresh the R Output block.
-- `build`: planned for the simulated loss table stage.
+- `build`: generate XLsimulation-compatible CDF source blocks from exposure
+  rating curves.
 
 `profile_update` reads risk profile input from `Input_Profile!B12:I...`:
 
@@ -263,6 +264,53 @@ Input_Profile!BH12:BS...
 
 The left and middle workbook formulas remain untouched. VBA also inserts the SI
 composition chart at the anchor address in `L56`, or `K57` if `L56` is blank.
+
+`profile_build` reads build controls from `Input_Profile!M4:M6`:
+
+```text
+Minimum Loss / threshold
+Loss Cap
+Percentile Steps
+```
+
+It reads prior/current exposure curve rows from `Input_Profile!M13:U20` and
+`Input_Profile!M24:U31`:
+
+```text
+LOB | LossCause | ELR | SubjectPrem | ActualPrem | Curve | CurrencyAdj | b | g
+```
+
+Rows with blank `LOB` or `LossCause` are skipped. Each nonblank `LossCause`
+produces one XLsimulation `CDF` source block CSV:
+
+```text
+_BERTToolkitTemp/xl_pricing_tool/profile/build/<LossCause>_cdf.csv
+```
+
+The generated CSV layout is:
+
+```text
+Parameter,Value
+Mean Frequency,<derived>
+Frequency Type,Poisson
+Interpolation,Linear
+Loss Cap,<M5>
+Minimum Loss,<M4>
+Percentile,Loss Severity
+0,<severity>
+...
+1,<severity>
+```
+
+If `M6 = n`, `profile_build` writes `n + 1` percentile rows including both
+`0` and `1`, plus the `Parameter,Value` header row and five parameter rows.
+Losses below `Minimum Loss` are ignored, not floored. The generated severity
+CDF is conditional on exceeding `Minimum Loss`, and the generated mean frequency
+is an exceedance frequency.
+
+Property and CEAR rows use MBBEFD curves from `MBCurves`; casualty rows use
+mixed-exponential increased-limit-factor curves from `ILFCurves`. Curve family
+is determined by the curve name in column `R`.
 
 The SI composition chart is a faceted 100% stacked bar chart. It uses average
 SI risk bands from `K37:K44`; a `Band Cut` label and trailing blank slots are
