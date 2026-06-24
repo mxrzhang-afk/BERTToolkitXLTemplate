@@ -657,6 +657,74 @@ Private Sub BTK_InsertRiskFitCdfChart(ByVal ws As Worksheet, ByVal riskfitFolder
     End If
 End Sub
 
+Private Function BTK_RefreshRelativePricingOutput(ByVal outputFolder As String, ByVal sheetName As String) As String
+    Dim ws As Worksheet
+    Dim relativeFolder As String
+    Dim outputPath As String
+    Dim lastRow As Long
+    Dim row As Long
+    Dim chartIndex As Long
+    Dim curveCode As String
+    Dim chartPath As String
+    Dim anchor As Range
+    Dim chartWidth As Double
+    Dim chartHeight As Double
+    Dim shapePrefix As String
+    Dim i As Long
+
+    If Len(outputFolder) = 0 Then
+        BTK_RefreshRelativePricingOutput = "RelativePricing output refresh skipped: could not find output folder in R result."
+        Exit Function
+    End If
+
+    outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
+    If Right$(outputFolder, 1) <> Application.PathSeparator Then
+        outputFolder = outputFolder & Application.PathSeparator
+    End If
+
+    relativeFolder = outputFolder & "relativepricing" & Application.PathSeparator
+    outputPath = relativeFolder & "relativepricing_parameters.csv"
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+
+    lastRow = ws.Cells(ws.Rows.Count, "T").End(xlUp).Row
+    If lastRow < 14 Then
+        lastRow = 14
+    End If
+    ws.Range("T14:V" & lastRow).ClearContents
+
+    shapePrefix = "BTK_RelativePricing_Curve_"
+    For i = ws.Shapes.Count To 1 Step -1
+        If Left$(ws.Shapes(i).Name, Len(shapePrefix)) = shapePrefix Then
+            ws.Shapes(i).Delete
+        End If
+    Next i
+
+    If Len(Dir(outputPath)) = 0 Then
+        Err.Raise vbObjectError + 5115, BTK_SOURCE, "RelativePricing parameter output was not created: " & outputPath
+    End If
+    If FileLen(outputPath) > 0 Then
+        BTK_LoadCsvToRange outputPath, ws.Range("T14")
+    End If
+
+    chartWidth = 360
+    chartHeight = 250
+    Set anchor = ws.Range("Y13")
+    lastRow = ws.Cells(ws.Rows.Count, "T").End(xlUp).Row
+    chartIndex = 0
+    For row = 14 To lastRow
+        curveCode = Trim$(CStr(ws.Cells(row, "T").Value))
+        If Len(curveCode) > 0 Then
+            chartPath = relativeFolder & "relativepricing_curve_" & BTK_SafeFileName(curveCode) & ".png"
+            BTK_InsertImage ws, chartPath, shapePrefix & BTK_SafeFileName(curveCode), anchor, chartWidth, chartHeight
+            ws.Shapes(shapePrefix & BTK_SafeFileName(curveCode)).Left = anchor.Left + chartIndex * (chartWidth + 18)
+            ws.Shapes(shapePrefix & BTK_SafeFileName(curveCode)).Top = anchor.Top
+            chartIndex = chartIndex + 1
+        End If
+    Next row
+
+    BTK_RefreshRelativePricingOutput = "RelativePricing parameters and " & CStr(chartIndex) & " fitted curve plot(s) refreshed on " & sheetName & "."
+End Function
+
 Private Function BTK_RefreshGNPICharts(ByVal outputFolder As String, ByVal sheetName As String) As String
     Dim ws As Worksheet
     Dim gnpiFolder As String
@@ -746,6 +814,8 @@ Private Function GRe_ToolIdForObjective(ByVal objectiveText As String) As String
             GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "xlsimulation", "xl simulation", "xl simulations", "sim variations"
             GRe_ToolIdForObjective = "xl_pricing_tool"
+        Case "relativepricing", "relative pricing"
+            GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "curve fit risk"
             GRe_ToolIdForObjective = "curve_fit_risk"
         Case Else
@@ -767,6 +837,8 @@ Private Function GRe_ActionForObjective(ByVal objectiveText As String, ByVal act
             GRe_ActionForObjective = "cat_onlevel_" & LCase$(action)
         Case "xlsimulation", "xl simulation", "xl simulations", "sim variations"
             GRe_ActionForObjective = "xlsimulation_" & LCase$(action)
+        Case "relativepricing", "relative pricing"
+            GRe_ActionForObjective = "relativepricing_" & LCase$(action)
         Case Else
             GRe_ActionForObjective = LCase$(action)
     End Select
@@ -853,6 +925,12 @@ Private Sub GRe_HandleResult(ByVal toolId As String, ByVal action As String, ByV
     If refreshWorkbook And toolId = "xl_pricing_tool" And action = "xlsimulation_update" And InStr(1, resultText, "XLSimulation update completed.", vbTextCompare) > 0 Then
         outputFolder = BTK_OutputFolderFromResult(resultText)
         resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshXLSimulationUpdate(outputFolder, activeSheetName)
+        ThisWorkbook.Save
+    End If
+
+    If refreshWorkbook And toolId = "xl_pricing_tool" And action = "relativepricing_update" And InStr(1, resultText, "RelativePricing update completed.", vbTextCompare) > 0 Then
+        outputFolder = BTK_OutputFolderFromResult(resultText)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshRelativePricingOutput(outputFolder, activeSheetName)
         ThisWorkbook.Save
     End If
 

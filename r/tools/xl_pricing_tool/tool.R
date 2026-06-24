@@ -1,31 +1,74 @@
-xl_pricing_tool_validate <- function(workbook_path, context = list()) {
+xl_pricing_tool_validate <- function(workbook_path, context = list(), action = NULL) {
   btk_require_file(workbook_path, "workbook")
 
   sheets <- xl_pricing_tool_sheet_names(workbook_path)
-  required_sheets <- c(
-    "Control_Module",
-    "Input_GNPI",
-    "Input_Agg",
-    "Input_Layers",
-    "Input_Profile",
-    "Portfolio",
-    "Risk Loss Fitting",
-    "PriceSelection_Risk",
-    "PriceTable_Risk",
-    "Input - Cat ELTs",
-    "PriceSelection_CAT",
-    "PriceTable_CAT"
+  if (length(sheets) == 0) {
+    stop("Workbook package does not list any worksheets.", call. = FALSE)
+  }
+
+  if (!is.null(action) && nzchar(action)) {
+    xl_pricing_tool_validate_action(workbook_path, action, context = context, sheets = sheets)
+  }
+
+  "OK"
+}
+
+xl_pricing_tool_validate_action <- function(workbook_path, action, context = list(), sheets = NULL) {
+  if (is.null(sheets)) {
+    sheets <- xl_pricing_tool_sheet_names(workbook_path)
+  }
+
+  action <- tolower(trimws(action))
+  active_sheet <- if (!is.null(context$active_sheet) && nzchar(context$active_sheet)) {
+    context$active_sheet
+  } else {
+    NULL
+  }
+
+  required_sheets <- switch(
+    action,
+    gather = character(),
+    update = character(),
+    build = character(),
+    gnpi_gather = if (is.null(active_sheet)) "Input_GNPI" else active_sheet,
+    gnpi_update = if (is.null(active_sheet)) "Input_GNPI" else active_sheet,
+    gnpi_build = if (is.null(active_sheet)) "Input_GNPI" else active_sheet,
+    agg_gather = if (is.null(active_sheet)) "Input_Agg" else active_sheet,
+    agg_update = c(if (is.null(active_sheet)) "Input_Agg" else active_sheet, "Control_Module"),
+    agg_build = if (is.null(active_sheet)) "Input_Agg" else active_sheet,
+    profile_gather = if (is.null(active_sheet)) "Input_Profile" else active_sheet,
+    profile_update = if (is.null(active_sheet)) "Input_Profile" else active_sheet,
+    profile_build = c(if (is.null(active_sheet)) "Input_Profile" else active_sheet, "MBCurves", "ILFCurves"),
+    riskfit_gather = if (is.null(active_sheet)) "Risk Loss Fitting" else active_sheet,
+    riskfit_update = if (is.null(active_sheet)) "Risk Loss Fitting" else active_sheet,
+    riskfit_build = if (is.null(active_sheet)) "Risk Loss Fitting" else active_sheet,
+    cat_onlevel_gather = if (is.null(active_sheet)) "CatLossOnLevel" else active_sheet,
+    cat_onlevel_update = if (is.null(active_sheet)) "CatLossOnLevel" else active_sheet,
+    cat_onlevel_build = if (is.null(active_sheet)) "CatLossOnLevel" else active_sheet,
+    xlsimulation_gather = if (is.null(active_sheet)) "Sim_Variations" else active_sheet,
+    xlsimulation_update = if (is.null(active_sheet)) "Sim_Variations" else active_sheet,
+    xlsimulation_build = if (is.null(active_sheet)) "Sim_Variations" else active_sheet,
+    relativepricing_gather = if (is.null(active_sheet)) "RelativePrice" else active_sheet,
+    relativepricing_update = c(if (is.null(active_sheet)) "RelativePrice" else active_sheet, "Input_Layers"),
+    relativepricing_build = c(if (is.null(active_sheet)) "RelativePrice" else active_sheet, "Input_Layers"),
+    character()
   )
 
-  missing_sheets <- setdiff(required_sheets, sheets)
+  xl_pricing_tool_require_sheets(sheets, required_sheets, sprintf("XL pricing action '%s'", action))
+  "OK"
+}
+
+xl_pricing_tool_require_sheets <- function(workbook_sheets, required_sheets, label = "workbook") {
+  required_sheets <- unique(required_sheets[nzchar(required_sheets)])
+  missing_sheets <- required_sheets[!tolower(required_sheets) %in% tolower(workbook_sheets)]
   if (length(missing_sheets) > 0) {
     stop(
-      sprintf("Workbook is missing required sheet(s): %s", paste(missing_sheets, collapse = ", ")),
+      sprintf("%s is missing required sheet(s): %s", label, paste(missing_sheets, collapse = ", ")),
       call. = FALSE
     )
   }
 
-  "OK"
+  invisible(TRUE)
 }
 
 xl_pricing_tool_sheet_names <- function(workbook_path) {

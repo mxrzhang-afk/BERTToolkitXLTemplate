@@ -50,6 +50,12 @@ actions:
     status: implemented
   xlsimulation_build:
     status: reserved
+  relativepricing_gather:
+    status: not_defined
+  relativepricing_update:
+    status: implemented
+  relativepricing_build:
+    status: not_defined
 tabs:
   Input_GNPI:
     marker: "<<GNPI>>"
@@ -376,16 +382,51 @@ tabs:
         cat_onlevel_output: cat_onlevel/cat_onlevel_output.csv
     build:
       status: not_defined
-required_sheets:
-  - Control_Module
-  - Input_GNPI
-  - Input_Agg
-  - Input_Layers
-  - Input_Profile
-  - Portfolio
-  - Risk Loss Fitting
-  - PriceSelection_Risk
-  - PriceTable_Risk
-  - Input - Cat ELTs
-  - PriceSelection_CAT
-  - PriceTable_CAT
+  RelativePrice:
+    marker: "<<RelativePricing>>"
+    gather:
+      function: xl_pricing_tool_relativepricing_gather
+      status: not_defined
+    update:
+      function: xl_pricing_tool_relativepricing_update
+      status: implemented
+      purpose: "Fit ROL = a * adjusted_layer_mp ^ b curves from the user-provided fitting base by Curve Code, write fitted a/b parameters, and generate one fitted-curve PNG per Curve Code."
+      required_sheets:
+        - active RelativePrice sheet
+        - Input_Layers
+      required_defined_names:
+        - Layer_ID
+        - Layer_Coverage
+        - Layer_Limit
+        - Layer_Deductible
+        - Layer_ROL
+        - Layer_Keyzone
+      fitting_structure:
+        range: RelativePrice!F13:O...
+        rows: RelativePrice!F14:O28
+        x: RelativePrice!L14:L28
+        y: RelativePrice!J14:J28
+        curve_code: RelativePrice!M14:M28
+      pricing_structure:
+        range: RelativePrice!F40:O...
+      parameter_output:
+        range: RelativePrice!T14:V...
+        file: relativepricing/relativepricing_parameters.csv
+      plot_output:
+        folder: relativepricing/
+        anchor: RelativePrice!Y13
+        placement: "One PNG per fitted Curve Code, spread horizontally from Y13."
+      rules:
+        curve_form: "ROL = a * adjusted_layer_mp ^ b"
+        fit_method: "log-linear OLS: log(ROL) = log(a) + b * log(adjusted_layer_mp)"
+        valid_points: "Positive numeric ROL, positive numeric adjusted layer midpoint, and nonblank Curve Code."
+        minimum_points: 2
+        plot_x_range: "Observed min-to-max adjusted layer midpoint for each Curve Code."
+      output_scope: "Only RelativePrice!T14:V... and BTK_RelativePricing_Curve_* shapes are overwritten by VBA. Deviation and pricing-structure formulas are not changed."
+    build:
+      function: xl_pricing_tool_relativepricing_build
+      status: not_defined
+validation:
+  scope: "Tab/action-specific. The XL pricing package validator only verifies that the workbook can be read; individual actions own their required sheets, ranges, and source tabs."
+  removed_global_required_sheet:
+    - Input - Cat ELTs
