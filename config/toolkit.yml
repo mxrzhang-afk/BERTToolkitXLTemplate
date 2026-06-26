@@ -15,7 +15,7 @@ r:
     - grid
     - readxl
     - openxlsx
-    - yaml
+    - xml2
 
 tools:
   china_exposure_map:

@@ -74,7 +74,7 @@ BTK.DefaultRunDir <- function(tool_id, workbook_path) {
 }
 
 BTK.RequiredPackages <- function() {
-  c("sf", "ggplot2", "dplyr", "magick", "readxl", "openxlsx")
+  c("sf", "ggplot2", "dplyr", "magick", "readxl", "openxlsx", "xml2")
 }
 
 BTK.PackageRepository <- function() {

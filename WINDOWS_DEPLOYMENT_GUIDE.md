@@ -52,10 +52,22 @@ Restart Excel after saving `functions.R`.
 
 Open Excel, then open the BERT console.
 
+The current toolkit package set is:
+
+```text
+sf
+ggplot2
+dplyr
+magick
+readxl
+openxlsx
+xml2
+```
+
 Run this command as one complete command:
 
 ```r
-install.packages(c("sf","ggplot2","dplyr","magick","readxl","openxlsx"), repos="https://packagemanager.posit.co/cran/2019-06-01", type="win.binary", dependencies=c("Depends","Imports","LinkingTo"))
+install.packages(c("sf","ggplot2","dplyr","magick","readxl","openxlsx","xml2"), repos="https://packagemanager.posit.co/cran/2019-06-01", type="win.binary", dependencies=c("Depends","Imports","LinkingTo"))
 ```
 
 Do not paste only the repository URL by itself. It must remain inside quotes as
@@ -222,6 +234,12 @@ show a clean unsupported-action message.
 Install packages using the exact Step 4 command. BERT 2.4.4 uses an old R
 runtime, so modern CRAN may not provide compatible binaries.
 
+Current package checks are driven by `BTK.RequiredPackages()` in:
+
+```text
+C:\CompanyTools\BERTToolkit\r\bootstrap.R
+```
+
 ### Error: Unexpected `/` in `https://...`
 
 The repository URL was pasted directly into the R console. Paste the full
@@ -297,7 +315,7 @@ C:\CompanyTools\BERTToolkit\r\registry.R
 [ ] C:\CompanyTools\BERTToolkit exists
 [ ] BERT functions.R sources C:/CompanyTools/BERTToolkit/r/bootstrap.R
 [ ] Excel restarted after BERT startup edit
-[ ] R packages installed from the 2019-06-01 snapshot
+[ ] R packages installed from the 2019-06-01 snapshot: sf, ggplot2, dplyr, magick, readxl, openxlsx, xml2
 [ ] VBA project access enabled
 [ ] embed_vba.vbs completed successfully
 [ ] Template workbook opens with GRe Tool Ribbon

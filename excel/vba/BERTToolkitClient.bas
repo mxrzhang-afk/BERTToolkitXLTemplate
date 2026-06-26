@@ -355,11 +355,18 @@ Private Function BTK_PrepareXLSimulationUpdateInputs(ByVal sheetName As String, 
     Dim causeId As String
     Dim causeFamily As String
     Dim modelSource As String
+    Dim inputMode As String
+    Dim filePath As String
     Dim activeFlag As String
     Dim locationText As String
     Dim sourceRange As Range
     Dim csvPath As String
     Dim exportedRows As Long
+    Dim exportTemplate As Boolean
+    Dim fallbackAllowed As Boolean
+    Dim sourceKind As String
+    Dim rowsText As String
+    Dim colsText As String
     Dim manifestRow() As String
 
     outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
@@ -374,49 +381,101 @@ Private Function BTK_PrepareXLSimulationUpdateInputs(ByVal sheetName As String, 
     Set ws = ThisWorkbook.Worksheets(sheetName)
     manifestNo = FreeFile
     Open manifestPath For Output As #manifestNo
-    ReDim manifestRow(1 To 8)
+    ReDim manifestRow(1 To 14)
 
     manifestRow(1) = BTK_CsvEscape("CauseID")
     manifestRow(2) = BTK_CsvEscape("CauseFamily")
     manifestRow(3) = BTK_CsvEscape("ModelSource")
-    manifestRow(4) = BTK_CsvEscape("Location")
-    manifestRow(5) = BTK_CsvEscape("CsvPath")
-    manifestRow(6) = BTK_CsvEscape("Rows")
-    manifestRow(7) = BTK_CsvEscape("Cols")
-    manifestRow(8) = BTK_CsvEscape("ExportedBy")
+    manifestRow(4) = BTK_CsvEscape("InputMode")
+    manifestRow(5) = BTK_CsvEscape("FilePath")
+    manifestRow(6) = BTK_CsvEscape("Location")
+    manifestRow(7) = BTK_CsvEscape("CsvPath")
+    manifestRow(8) = BTK_CsvEscape("Rows")
+    manifestRow(9) = BTK_CsvEscape("Cols")
+    manifestRow(10) = BTK_CsvEscape("SourceKind")
+    manifestRow(11) = BTK_CsvEscape("FallbackAllowed")
+    manifestRow(12) = BTK_CsvEscape("ExportedBy")
+    manifestRow(13) = BTK_CsvEscape("Status")
+    manifestRow(14) = BTK_CsvEscape("Message")
     BTK_WriteCsvRow manifestNo, manifestRow
 
     For row = 50 To 61
         causeId = Trim$(CStr(ws.Cells(row, "B").Value))
         causeFamily = Trim$(CStr(ws.Cells(row, "C").Value))
         modelSource = Trim$(CStr(ws.Cells(row, "D").Value))
+        inputMode = Trim$(CStr(ws.Cells(row, "F").Value))
+        filePath = Trim$(CStr(ws.Cells(row, "G").Value))
         activeFlag = UCase$(Trim$(CStr(ws.Cells(row, "H").Value)))
         locationText = Trim$(CStr(ws.Cells(row, "J").Value))
 
         If Len(causeId) > 0 And activeFlag = "Y" Then
-            If Len(locationText) = 0 Then
+            If Len(inputMode) = 0 Then
+                inputMode = "Paste"
+            End If
+
+            Select Case UCase$(inputMode)
+                Case "PASTE"
+                    exportTemplate = True
+                    fallbackAllowed = False
+                    sourceKind = "template"
+                Case "FILE"
+                    exportTemplate = False
+                    fallbackAllowed = False
+                    sourceKind = "file"
+                Case "AUTO"
+                    exportTemplate = True
+                    fallbackAllowed = True
+                    If Len(filePath) > 0 Then
+                        sourceKind = "file"
+                    Else
+                        sourceKind = "template"
+                    End If
+                Case Else
+                    Err.Raise vbObjectError + 5122, BTK_SOURCE, "XLSimulation active cause has unsupported InputMode: " & causeId & " = " & inputMode
+            End Select
+
+            csvPath = ""
+            exportedRows = 0
+            rowsText = ""
+            colsText = ""
+
+            If exportTemplate And Len(locationText) = 0 Then
                 Err.Raise vbObjectError + 5120, BTK_SOURCE, "XLSimulation active cause has no Location: " & causeId
             End If
 
-            Set sourceRange = Nothing
-            On Error Resume Next
-            Set sourceRange = ws.Range(locationText)
-            On Error GoTo 0
-            If sourceRange Is Nothing Then
-                Err.Raise vbObjectError + 5121, BTK_SOURCE, "XLSimulation active cause has invalid Location: " & causeId & " = " & locationText
-            End If
+            If exportTemplate Then
+                Set sourceRange = Nothing
+                On Error Resume Next
+                Set sourceRange = ws.Range(locationText)
+                On Error GoTo 0
+                If sourceRange Is Nothing Then
+                    Err.Raise vbObjectError + 5121, BTK_SOURCE, "XLSimulation active cause has invalid Location: " & causeId & " = " & locationText
+                End If
 
-            csvPath = sourceFolder & Application.PathSeparator & BTK_SafeFileName(causeId) & ".csv"
-            exportedRows = BTK_ExportRangeToCsv(sourceRange, csvPath)
+                csvPath = sourceFolder & Application.PathSeparator & BTK_SafeFileName(causeId) & ".csv"
+                exportedRows = BTK_ExportRangeToCsv(sourceRange, csvPath)
+                rowsText = CStr(exportedRows)
+                colsText = CStr(sourceRange.Columns.Count)
+            End If
 
             manifestRow(1) = BTK_CsvEscape(causeId)
             manifestRow(2) = BTK_CsvEscape(causeFamily)
             manifestRow(3) = BTK_CsvEscape(modelSource)
-            manifestRow(4) = BTK_CsvEscape(locationText)
-            manifestRow(5) = BTK_CsvEscape(csvPath)
-            manifestRow(6) = BTK_CsvEscape(CStr(exportedRows))
-            manifestRow(7) = BTK_CsvEscape(CStr(sourceRange.Columns.Count))
-            manifestRow(8) = BTK_CsvEscape("VBA")
+            manifestRow(4) = BTK_CsvEscape(inputMode)
+            manifestRow(5) = BTK_CsvEscape(filePath)
+            manifestRow(6) = BTK_CsvEscape(locationText)
+            manifestRow(7) = BTK_CsvEscape(csvPath)
+            manifestRow(8) = BTK_CsvEscape(rowsText)
+            manifestRow(9) = BTK_CsvEscape(colsText)
+            manifestRow(10) = BTK_CsvEscape(sourceKind)
+            If fallbackAllowed Then
+                manifestRow(11) = BTK_CsvEscape("Y")
+            Else
+                manifestRow(11) = BTK_CsvEscape("N")
+            End If
+            manifestRow(12) = BTK_CsvEscape("VBA")
+            manifestRow(13) = BTK_CsvEscape("pending")
+            manifestRow(14) = BTK_CsvEscape("")
             BTK_WriteCsvRow manifestNo, manifestRow
 
             Set sourceRange = Nothing
@@ -426,6 +485,106 @@ Private Function BTK_PrepareXLSimulationUpdateInputs(ByVal sheetName As String, 
     Close #manifestNo
     BTK_PrepareXLSimulationUpdateInputs = outputFolder
 End Function
+
+Public Sub BTK_BrowseXLSimulationSourceFile()
+    Dim ws As Worksheet
+    Dim selectedCell As Range
+    Dim declarationRow As Range
+    Dim selectedPath As Variant
+    Dim selectedRow As Long
+    Dim causeId As String
+    Dim causeFamily As String
+
+    On Error GoTo BrowseFailed
+
+    If ActiveSheet.Name <> "Sim_Variations" Then
+        MsgBox "Select a FilePath cell on Sim_Variations first.", vbExclamation, "GRe Tools"
+        Exit Sub
+    End If
+
+    Set ws = ThisWorkbook.Worksheets("Sim_Variations")
+    Set selectedCell = ActiveCell
+
+    If selectedCell.CountLarge <> 1 _
+        Or Intersect(selectedCell, ws.Range("G50:G61")) Is Nothing Then
+        MsgBox "Select one FilePath cell in G50:G61 first.", vbExclamation, "GRe Tools"
+        Exit Sub
+    End If
+
+    selectedRow = selectedCell.Row
+    Set declarationRow = ws.Range("B" & selectedRow & ":J" & selectedRow)
+
+    causeId = Trim$(CStr(declarationRow.Cells(1, 1).Value))
+    causeFamily = Trim$(CStr(declarationRow.Cells(1, 2).Value))
+
+    If Len(causeId) = 0 Then
+        MsgBox "The selected loss cause row has no CauseID.", vbExclamation, "GRe Tools"
+        Exit Sub
+    End If
+
+    If StrComp(causeFamily, "ModeledCAT", vbTextCompare) <> 0 _
+        And StrComp(causeFamily, "CDF", vbTextCompare) <> 0 Then
+        MsgBox "Source file browsing is supported only for ModeledCAT and CDF causes.", vbExclamation, "GRe Tools"
+        Exit Sub
+    End If
+
+    selectedPath = Application.GetOpenFilename( _
+        FileFilter:="Source files (*.csv;*.txt),*.csv;*.txt,All files (*.*),*.*", _
+        Title:="Select source file for " & causeId, _
+        MultiSelect:=False)
+
+    If VarType(selectedPath) = vbBoolean And selectedPath = False Then
+        Exit Sub
+    End If
+
+    declarationRow.Cells(1, 6).Value = CStr(selectedPath)
+    Exit Sub
+
+BrowseFailed:
+    MsgBox Err.Description, vbCritical, "GRe Tools"
+End Sub
+
+Public Sub BTK_AddXLSimulationBrowseButton()
+    Const BUTTON_NAME As String = "BTK_XLSimulation_BrowseSource_Button"
+
+    Dim ws As Worksheet
+    Dim anchor As Range
+    Dim button As Shape
+
+    On Error GoTo AddButtonFailed
+
+    Set ws = ThisWorkbook.Worksheets("Sim_Variations")
+    Set anchor = ws.Range("G48")
+
+    BTK_DeleteShapeIfExists ws, BUTTON_NAME
+
+    Set button = ws.Shapes.AddShape( _
+        Type:=msoShapeRoundedRectangle, _
+        Left:=anchor.Left, _
+        Top:=anchor.Top, _
+        Width:=120, _
+        Height:=24)
+
+    With button
+        .Name = BUTTON_NAME
+        .TextFrame2.TextRange.Text = "Browse Source"
+        .TextFrame2.TextRange.Font.Size = 10
+        .TextFrame2.TextRange.Font.Bold = msoTrue
+        .TextFrame2.TextRange.Font.Fill.ForeColor.RGB = RGB(255, 255, 255)
+        .TextFrame2.VerticalAnchor = msoAnchorMiddle
+        .TextFrame2.TextRange.ParagraphFormat.Alignment = msoAlignCenter
+        .Fill.ForeColor.RGB = RGB(47, 117, 181)
+        .Line.ForeColor.RGB = RGB(31, 78, 121)
+        .OnAction = "BTK_BrowseXLSimulationSourceFile"
+        .Placement = xlMoveAndSize
+    End With
+
+    MsgBox "Browse Source button added. Select a FilePath cell in G50:G61, then click the button.", vbInformation, "GRe Tools"
+    Exit Sub
+
+AddButtonFailed:
+    MsgBox Err.Description, vbCritical, "GRe Tools"
+End Sub
 
 Private Function BTK_RefreshAggOutput(ByVal outputFolder As String, ByVal sheetName As String) As String
     Dim ws As Worksheet
@@ -996,6 +1155,10 @@ End Sub
 
 Public Sub GRe_RibbonBuild(ByVal control As Object)
     GRe_Build
+End Sub
+
+Public Sub GRe_RibbonBrowseXLSimulationSource(ByVal control As Object)
+    BTK_BrowseXLSimulationSourceFile
 End Sub
 
 Public Sub GRe_RibbonGatherFallback()

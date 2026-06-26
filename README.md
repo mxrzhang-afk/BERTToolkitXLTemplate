@@ -49,7 +49,7 @@ Alt+F8 > BTK_InstallPackages > Run
 This installs the required packages into the R library used by BERT:
 
 ```r
-c("sf", "ggplot2", "dplyr", "magick", "readxl", "openxlsx")
+c("sf", "ggplot2", "dplyr", "magick", "readxl", "openxlsx", "xml2")
 ```
 
 Because BERT 2.4.4 uses R 3.5.0, the installer uses a dated Posit Package
@@ -57,7 +57,7 @@ Manager snapshot with Windows binaries:
 
 ```r
 install.packages(
-  c("sf", "ggplot2", "dplyr", "magick", "readxl", "openxlsx"),
+  c("sf", "ggplot2", "dplyr", "magick", "readxl", "openxlsx", "xml2"),
   repos = "https://packagemanager.posit.co/cran/2019-06-01",
   type = "win.binary",
   dependencies = c("Depends", "Imports", "LinkingTo")

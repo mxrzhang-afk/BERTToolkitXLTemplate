@@ -133,6 +133,8 @@ xl_pricing_tool_xlsimulation_update <- function(workbook_path, output_dir = NULL
     sprintf("Layer output: %s", file.path(sim$sim_dir, "xlsimulation_layer_output.csv")),
     sprintf("Layer breakdown: %s", file.path(sim$sim_dir, "xlsimulation_layer_breakdown.csv")),
     sprintf("OEP output: %s", file.path(sim$sim_dir, "xlsimulation_oep_output.csv")),
+    "Source resolution:",
+    paste(inputs$source_summaries, collapse = vb_newline()),
     "CSV outputs are handled by the VBA client after BERT returns.",
     sep = vb_newline()
   )
@@ -217,6 +219,17 @@ xl_pricing_tool_xlsimulation_update_context <- function(workbook_path, output_di
   sim$source_manifest <- xl_pricing_tool_xlsimulation_load_source_manifest(sim)
   manifest_cause_ids <- if (is.null(sim$source_manifest)) character() else sim$source_manifest$CauseID
   causes_needing_workbook <- active_causes[!active_causes$CauseID %in% manifest_cause_ids, , drop = FALSE]
+  if (!is.null(sim$source_manifest) && nrow(sim$source_manifest) > 0) {
+    manifest_modes <- xl_pricing_tool_xlsimulation_input_mode(sim$source_manifest$InputMode)
+    manifest_needs_workbook <- sim$source_manifest$CauseID[
+      manifest_modes %in% c("Paste", "Auto") & !nzchar(trimws(sim$source_manifest$CsvPath))
+    ]
+    causes_needing_workbook <- rbind(
+      causes_needing_workbook,
+      active_causes[active_causes$CauseID %in% manifest_needs_workbook, , drop = FALSE]
+    )
+    causes_needing_workbook <- causes_needing_workbook[!duplicated(causes_needing_workbook$CauseID), , drop = FALSE]
+  }
   source_ranges <- unique(trimws(causes_needing_workbook$Location[nzchar(trimws(causes_needing_workbook$Location))]))
   if (length(source_ranges) > 0) {
     source_cells <- xl_pricing_tool_xlsimulation_load_source_cells_for_ranges(
@@ -302,7 +315,7 @@ xl_pricing_tool_xlsimulation_read_contract <- function(sim, validate_sources = T
       cause <- active_causes[i, , drop = FALSE]
       source <- xl_pricing_tool_xlsimulation_read_source(sim, cause)
       sources[[cause$CauseID]] <- source
-      source_summaries <- c(source_summaries, sprintf("%s: %s rows", cause$CauseID, nrow(source$data)))
+      source_summaries <- c(source_summaries, source$summary)
     }
   }
 
@@ -441,6 +454,12 @@ xl_pricing_tool_xlsimulation_read_source <- function(sim, cause) {
     return(manifest_source)
   }
 
+  source <- xl_pricing_tool_xlsimulation_read_source_from_workbook(sim, cause)
+  source$summary <- sprintf("%s: template range %s, %s rows", cause$CauseID, source$range, nrow(source$data))
+  source
+}
+
+xl_pricing_tool_xlsimulation_read_source_from_workbook <- function(sim, cause) {
   parsed <- xl_pricing_tool_xlsimulation_parse_location(cause$Location)
   if (is.null(parsed)) {
     stop(sprintf("XLSimulation cause %s has malformed Location: %s", cause$CauseID, cause$Location), call. = FALSE)
@@ -479,8 +498,15 @@ xl_pricing_tool_xlsimulation_load_source_manifest <- function(sim) {
     stop(sprintf("XLSimulation source manifest is missing: %s.", paste(missing, collapse = ", ")), call. = FALSE)
   }
 
+  optional <- c("InputMode", "FilePath", "SourceKind", "FallbackAllowed", "Status", "Message")
+  for (name in optional) {
+    if (!name %in% names(manifest)) {
+      manifest[[name]] <- ""
+    }
+  }
+
   manifest[] <- lapply(manifest, function(x) trimws(as.character(x)))
-  manifest <- manifest[nzchar(manifest$CauseID) & nzchar(manifest$CsvPath), , drop = FALSE]
+  manifest <- manifest[nzchar(manifest$CauseID), , drop = FALSE]
   rownames(manifest) <- NULL
   manifest
 }
@@ -496,21 +522,130 @@ xl_pricing_tool_xlsimulation_read_source_from_manifest <- function(sim, cause) {
     return(NULL)
   }
 
-  csv_path <- manifest$CsvPath[[row_index]]
+  manifest_row <- manifest[row_index, , drop = FALSE]
+  mode <- xl_pricing_tool_xlsimulation_input_mode(cause$InputMode)
+  if (!nzchar(mode)) {
+    mode <- xl_pricing_tool_xlsimulation_input_mode(manifest_row$InputMode)
+  }
+  if (!nzchar(mode)) mode <- "Paste"
+
+  file_path <- trimws(as.character(cause$FilePath))
+  if (!nzchar(file_path)) {
+    file_path <- trimws(as.character(manifest_row$FilePath))
+  }
+  csv_path <- trimws(as.character(manifest_row$CsvPath))
+
+  if (identical(mode, "File")) {
+    source <- xl_pricing_tool_xlsimulation_read_external_file(cause, file_path)
+    source$summary <- sprintf("%s: external file %s, %s rows", cause$CauseID, file_path, nrow(source$data))
+    return(source)
+  }
+
+  if (identical(mode, "Auto") && nzchar(file_path)) {
+    external <- tryCatch(
+      xl_pricing_tool_xlsimulation_read_external_file(cause, file_path),
+      error = function(e) e
+    )
+    if (!inherits(external, "error")) {
+      external$summary <- sprintf("%s: external file %s, %s rows", cause$CauseID, file_path, nrow(external$data))
+      return(external)
+    }
+
+    fallback <- xl_pricing_tool_xlsimulation_read_manifest_template_source(sim, cause, manifest_row)
+    fallback$summary <- sprintf(
+      "%s: external file failed (%s); used template %s, %s rows",
+      cause$CauseID,
+      conditionMessage(external),
+      fallback$range,
+      nrow(fallback$data)
+    )
+    return(fallback)
+  }
+
+  source <- xl_pricing_tool_xlsimulation_read_manifest_template_source(sim, cause, manifest_row)
+  source$summary <- sprintf("%s: template %s, %s rows", cause$CauseID, source$range, nrow(source$data))
+  source
+}
+
+xl_pricing_tool_xlsimulation_read_manifest_template_source <- function(sim, cause, manifest_row) {
+  csv_path <- trimws(as.character(manifest_row$CsvPath))
+  if (nzchar(csv_path)) {
+    source <- xl_pricing_tool_xlsimulation_read_source_csv(cause, csv_path, external = FALSE)
+    source$range <- trimws(as.character(manifest_row$Location))
+    source$csv_path <- csv_path
+    return(source)
+  }
+
+  xl_pricing_tool_xlsimulation_read_source_from_workbook(sim, cause)
+}
+
+xl_pricing_tool_xlsimulation_read_external_file <- function(cause, file_path) {
+  if (!nzchar(file_path)) {
+    stop(sprintf("%s is configured for external file input but FilePath is blank.", cause$CauseID), call. = FALSE)
+  }
+  if (!file.exists(file_path)) {
+    stop(sprintf("file not found: %s", file_path), call. = FALSE)
+  }
+
+  source <- xl_pricing_tool_xlsimulation_read_source_csv(cause, file_path, external = TRUE)
+  source$file_path <- file_path
+  source
+}
+
+xl_pricing_tool_xlsimulation_read_source_csv <- function(cause, csv_path, external = FALSE) {
   if (!file.exists(csv_path)) {
     stop(sprintf("XLSimulation source CSV for %s was not found: %s", cause$CauseID, csv_path), call. = FALSE)
   }
 
-  raw <- utils::read.csv(
-    csv_path,
+  raw <- xl_pricing_tool_xlsimulation_read_csv_rectangular(csv_path)
+  raw <- xl_pricing_tool_xlsimulation_trim_empty_edges(raw)
+  if (nrow(raw) < 1) {
+    stop(sprintf("XLSimulation cause %s source CSV has no rows.", cause$CauseID), call. = FALSE)
+  }
+
+  parsed <- xl_pricing_tool_xlsimulation_parse_source_table(cause, raw, external = external)
+  parsed$csv_path <- csv_path
+  parsed
+}
+
+xl_pricing_tool_xlsimulation_read_csv_rectangular <- function(csv_path) {
+  lines <- readLines(csv_path, warn = FALSE)
+  lines <- sub("\r$", "", lines)
+  if (length(lines) == 0) return(data.frame())
+
+  counter <- textConnection(lines)
+  on.exit(close(counter), add = TRUE)
+  field_counts <- utils::count.fields(counter, sep = ",", quote = "\"", blank.lines.skip = FALSE, comment.char = "")
+  max_cols <- max(field_counts, na.rm = TRUE)
+  if (!is.finite(max_cols) || max_cols < 1) return(data.frame())
+
+  reader <- textConnection(lines)
+  on.exit(close(reader), add = TRUE)
+  utils::read.table(
+    reader,
+    sep = ",",
     header = FALSE,
     stringsAsFactors = FALSE,
     check.names = FALSE,
     colClasses = "character",
     na.strings = character(),
-    blank.lines.skip = FALSE
+    blank.lines.skip = FALSE,
+    fill = TRUE,
+    quote = "\"",
+    comment.char = "",
+    col.names = paste0("V", seq_len(max_cols))
   )
-  raw <- xl_pricing_tool_xlsimulation_trim_empty_edges(raw)
+}
+
+xl_pricing_tool_xlsimulation_parse_source_table <- function(cause, raw, external = FALSE) {
+  family <- xl_pricing_tool_xlsimulation_family(cause$CauseFamily)
+  model <- toupper(trimws(cause$ModelSource))
+
+  if (isTRUE(external) && identical(family, "ModeledCAT") && identical(model, "RMS")) {
+    rms <- xl_pricing_tool_xlsimulation_parse_external_rms(cause, raw)
+    if (!is.null(rms)) return(rms)
+  }
+
   if (nrow(raw) < 2) {
     stop(sprintf("XLSimulation cause %s source CSV has no data rows.", cause$CauseID), call. = FALSE)
   }
@@ -521,7 +656,43 @@ xl_pricing_tool_xlsimulation_read_source_from_manifest <- function(sim, cause) {
   data <- xl_pricing_tool_xlsimulation_drop_blank_rows(data)
 
   xl_pricing_tool_xlsimulation_validate_source(cause, headers, data)
-  list(headers = headers, data = data, range = manifest$Location[[row_index]], csv_path = csv_path)
+  list(headers = headers, data = data)
+}
+
+xl_pricing_tool_xlsimulation_parse_external_rms <- function(cause, raw) {
+  expected_headers <- c("Event ID", "Event Rate", "Mean Loss", "Std Dev Ind", "Std Dev Corr", "Exposure")
+  if (ncol(raw) >= 6) {
+    first_headers <- trimws(as.character(raw[1, seq_len(6)]))
+    normalized <- gsub("^Evend\\.ID$", "Event.ID", make.names(first_headers))
+    expected <- c("Event.ID", "Event.Rate", "Mean.Loss", "Std.Dev.Ind", "Std.Dev.Corr", "Exposure")
+    if (all(normalized == expected)) {
+      data <- raw[-1, seq_len(6), drop = FALSE]
+      names(data) <- make.names(expected_headers, unique = TRUE)
+      data <- xl_pricing_tool_xlsimulation_drop_blank_rows(data)
+      xl_pricing_tool_xlsimulation_validate_source(cause, expected_headers, data)
+      return(list(headers = expected_headers, data = data))
+    }
+  }
+
+  if (ncol(raw) < 6) return(NULL)
+
+  event_id <- trimws(as.character(raw[[1]]))
+  event_id_num <- suppressWarnings(as.numeric(event_id))
+  event_rate <- suppressWarnings(as.numeric(raw[[2]]))
+  mean_loss <- suppressWarnings(as.numeric(raw[[3]]))
+  std_dev_ind <- suppressWarnings(as.numeric(raw[[4]]))
+  std_dev_corr <- suppressWarnings(as.numeric(raw[[5]]))
+  exposure <- suppressWarnings(as.numeric(raw[[6]]))
+  data_rows <- nzchar(event_id) & is.finite(event_id_num) & is.finite(event_rate) & is.finite(mean_loss) &
+    is.finite(std_dev_ind) & is.finite(std_dev_corr) & is.finite(exposure)
+  first_data <- which(data_rows)
+  if (length(first_data) == 0) return(NULL)
+
+  data <- raw[first_data[[1]]:nrow(raw), seq_len(6), drop = FALSE]
+  names(data) <- make.names(expected_headers, unique = TRUE)
+  data <- xl_pricing_tool_xlsimulation_drop_blank_rows(data)
+  xl_pricing_tool_xlsimulation_validate_source(cause, expected_headers, data)
+  list(headers = expected_headers, data = data)
 }
 
 xl_pricing_tool_xlsimulation_validate_source <- function(cause, headers, data) {
@@ -1235,6 +1406,17 @@ xl_pricing_tool_xlsimulation_validate_cause_declarations <- function(causes) {
     stop(sprintf("FS/CDF cause(s) should leave ModelSource blank: %s", paste(bad_fs_model, collapse = ", ")), call. = FALSE)
   }
 
+  normalized_mode <- xl_pricing_tool_xlsimulation_input_mode(causes$InputMode)
+  bad_mode <- causes$CauseID[!nzchar(normalized_mode)]
+  if (length(bad_mode) > 0) {
+    stop(sprintf("XLSimulation active cause(s) have unsupported InputMode: %s", paste(bad_mode, collapse = ", ")), call. = FALSE)
+  }
+
+  file_without_path <- causes$CauseID[normalized_mode == "File" & !nzchar(trimws(causes$FilePath))]
+  if (length(file_without_path) > 0) {
+    stop(sprintf("XLSimulation File mode cause(s) require FilePath: %s", paste(file_without_path, collapse = ", ")), call. = FALSE)
+  }
+
   if (sum(modeled) > 6) {
     stop("XLSimulation supports at most 6 active ModeledCAT causes in V1.", call. = FALSE)
   }
@@ -1254,6 +1436,15 @@ xl_pricing_tool_xlsimulation_family <- function(value) {
   out[key %in% c("modeledcat", "modeled cat", "cat", "catmodel", "cat model")] <- "ModeledCAT"
   out[key %in% c("fs", "frequency severity", "frequency-severity", "frequencyseverity")] <- "FS"
   out[key %in% c("cdf", "severity cdf", "severitycdf")] <- "CDF"
+  out
+}
+
+xl_pricing_tool_xlsimulation_input_mode <- function(value) {
+  key <- tolower(trimws(as.character(value)))
+  out <- rep("", length(key))
+  out[!nzchar(key) | key %in% c("paste", "pasted", "template", "workbook")] <- "Paste"
+  out[key %in% c("file", "external", "sourcefile", "source file")] <- "File"
+  out[key %in% c("auto", "automatic", "filefirst", "file first")] <- "Auto"
   out
 }
 

@@ -1,8 +1,8 @@
 package,minimum_version,notes
 sf,,Spatial data handling; test Windows install early
 ggplot2,,Map rendering
-tidyverse,,Data manipulation
+dplyr,,Data joins and manipulation
 magick,,Image crop and composition
 readxl,,Read Excel inputs
 openxlsx,,Write Excel outputs and logs
-yaml,,Read toolkit and tool config files
+xml2,,Read worksheet XML source ranges for XL Simulation fallback paths
