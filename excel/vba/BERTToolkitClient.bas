@@ -886,9 +886,9 @@ Private Function BTK_RefreshXLSimulationGather(ByVal outputFolder As String, ByV
 
     Set ws = ThisWorkbook.Worksheets(sheetName)
     ws.Range("M49:V61").ClearContents
-    ws.Range("AE26:AO41").ClearContents
+    ws.Range("AG26:AQ41").ClearContents
     BTK_LoadCsvToRange coveragePath, ws.Range("M49")
-    BTK_LoadCsvToRange breakdownPath, ws.Range("AE26")
+    BTK_LoadCsvToRange breakdownPath, ws.Range("AG26")
 
     BTK_RefreshXLSimulationGather = "XLSimulation coverage matrix and breakdown headers refreshed on " & sheetName & "."
 End Function
@@ -916,11 +916,11 @@ Private Function BTK_RefreshXLSimulationUpdate(ByVal outputFolder As String, ByV
     oepPath = simFolder & "xlsimulation_oep_output.csv"
 
     Set ws = ThisWorkbook.Worksheets(sheetName)
-    ws.Range("J26:AB41").ClearContents
-    ws.Range("AE26:AO41").ClearContents
+    ws.Range("J26:AD41").ClearContents
+    ws.Range("AG26:AQ41").ClearContents
     ws.Range("B107:AW121").ClearContents
     BTK_LoadCsvToRange layerOutputPath, ws.Range("J26")
-    BTK_LoadCsvToRange breakdownPath, ws.Range("AE26")
+    BTK_LoadCsvToRange breakdownPath, ws.Range("AG26")
     BTK_LoadCsvToRange oepPath, ws.Range("B107")
 
     BTK_RefreshXLSimulationUpdate = "XLSimulation layer output, breakdown, and OEP tables refreshed on " & sheetName & "."

@@ -3,7 +3,7 @@
 Branch:
 
 ```text
-xl_simulation_tool
+xl_simulations_tool_v3
 ```
 
 Workbook:
@@ -25,9 +25,8 @@ A1 = <<XLSimulation>>
 C5 = <<XLSimulation>>
 ```
 
-This document records the V1 contract for the XL simulation tab before the R
-and VBA implementation work starts. Keep it updated when the worksheet layout,
-simulation assumptions, or handoff files change.
+This document records the XL simulation tab contract. Keep it updated when the
+worksheet layout, simulation assumptions, or handoff files change.
 
 ## V1 Scope
 
@@ -75,7 +74,7 @@ LayerID | LayerName | Limit | Deductible | # of Reinstatements | ReinstatementPc
 Layer output:
 
 ```text
-J26:AB41
+J26:AD41
 ```
 
 Layer output headers:
@@ -92,14 +91,27 @@ Q  InputPremium
 R  ReinstatementFactor
 S  ExpectedLoss_AEP
 T  StdDev_AEP
-U  SelectedVaR_OEP
-V  SelectedTVaR_OEP
-W  SelectedRiskMetric_OEP
-X  CapitalRequired
-Y  LossCostROL
-Z  InputLossRatio
-AA InputSDMultiple
-AB InputROE
+U  AdjustedLoss_AEP
+V  StdDev_AEPAL
+W  SelectedVaR_OEP
+X  SelectedTVaR_OEP
+Y  SelectedRiskMetric_OEP
+Z  CapitalRequired
+AA LossCostROL
+AB InputLossRatio
+AC InputSDMultiple
+AD InputROE
+```
+
+Template contrast:
+
+```text
+Main/current committed template:
+J26:AB41, with OEP metrics beginning at U and final metric InputROE at AB.
+
+V3 working template:
+J26:AD41, adding AdjustedLoss_AEP and StdDev_AEPAL at U:V, shifting OEP and
+downstream pricing metrics two columns to the right.
 ```
 
 Loss cause declarations:
@@ -119,10 +131,10 @@ M49:V61
 Cause breakdown output:
 
 ```text
-AE26:AO41
+AG26:AQ41
 ```
 
-The gather action should refresh `AE26:AO26` so `AE26` is `LayerID` and the
+The gather action should refresh `AG26:AQ26` so `AG26` is `LayerID` and the
 remaining headers are the active loss causes in declaration order.
 
 ## Loss Cause Families
@@ -206,7 +218,7 @@ CDF_MB        AV134:AW1000    percentile/loss severity table
 - Preserve existing `Y`/`N` selections where layer/cause intersections still
   exist.
 - Add active layers and active causes to the matrix.
-- Refresh `AE26:AO26` with `LayerID` plus active loss cause headers.
+- Refresh `AG26:AQ26` with `LayerID` plus active loss cause headers.
 - Validate active source block schemas for ModeledCAT, FS, and CDF inputs.
 - Return a clear validation summary.
 
@@ -232,8 +244,8 @@ Expected summary items:
 - Apply CAT scaling factor to all `ModeledCAT` causes.
 - Allocate event losses into selected layers.
 - Apply reinstatement assumptions to annual aggregate layer loss.
-- Produce layer output metrics in `J26:AB41`.
-- Produce expected loss contribution by cause/layer in `AE26:AO41`.
+- Produce layer output metrics in `J26:AD41`.
+- Produce expected loss contribution by cause/layer in `AG26:AQ41`.
 - Produce simulated OEP tables for active causes.
 - Leave inactive cause OEP tables as zero.
 - Write CSV handoff files for VBA to load into workbook ranges.
@@ -241,7 +253,10 @@ Expected summary items:
 ## Simulation Settings
 
 `Simulation Years` is read from the worksheet and controls the number of
-simulated years/trials. It must not be hardcoded to 10000.
+simulated years/trials. For deterministic CTR/TS event tables, the effective
+year count is capped at 10000 to match the legacy workbook calculation window.
+RMS, FS, and CDF simulation paths continue to use the user-selected simulation
+year count.
 
 `Random Seed` is optional but should be used for deterministic stochastic runs
 when provided.
@@ -362,13 +377,27 @@ event_layer_loss = min(max(event_loss - deductible, 0), limit)
 Annual aggregate capacity:
 
 ```text
-annual_layer_capacity = limit * (1 + reinstatement_count * reinstatement_pct)
+annual_layer_capacity = limit * (1 + reinstatement_count)
 ```
+
+The reinstatement percentage affects reinstatement premium only; it does not
+increase or reduce available reinstated capacity.
 
 AEP annual loss:
 
 ```text
 annual_aep_loss = min(sum(event_layer_loss), annual_layer_capacity)
+```
+
+Legacy adjusted annual loss:
+
+```text
+reinstatement_premium =
+  min(annual_aep_loss / limit, reinstatement_count) *
+  reinstatement_pct *
+  base_input_premium
+
+annual_adjusted_loss = annual_aep_loss - reinstatement_premium
 ```
 
 OEP annual loss:
@@ -385,20 +414,30 @@ limit.
 Metric formulas:
 
 ```text
-ReinstatementFactor = 1 + ReinstatementCount * ReinstatementPct
-InputPremium = Limit * InputROL * ReinstatementFactor
+ReinstatementsUsed = min(annual_aep_loss / Limit, ReinstatementCount)
+ReinstatementFactor = mean(ReinstatementsUsed)
+BaseInputPremium = Limit * InputROL
+InputPremium = BaseInputPremium
 ExpectedLoss_AEP = mean(annual_aep_loss)
 StdDev_AEP = sd(annual_aep_loss)
+AdjustedLoss_AEP = mean(annual_adjusted_loss)
+StdDev_AEPAL = sd(annual_adjusted_loss)
 SelectedVaR_OEP = OEP quantile at Return Period
 SelectedTVaR_OEP = mean(OEP losses >= SelectedVaR_OEP)
 SelectedRiskMetric_OEP = SelectedVaR_OEP if Risk Measure is VaR
 SelectedRiskMetric_OEP = SelectedTVaR_OEP if Risk Measure is TVaR
-CapitalRequired = SelectedRiskMetric_OEP - ExpectedLoss_AEP
+CapitalRequired = SelectedRiskMetric_OEP - AdjustedLoss_AEP
 LossCostROL = ExpectedLoss_AEP / Limit
-InputLossRatio = ExpectedLoss_AEP / InputPremium
-InputSDMultiple = (InputPremium - ExpectedLoss_AEP) / StdDev_AEP
-InputROE = (InputPremium - ExpectedLoss_AEP) / CapitalRequired
+InputLossRatio = AdjustedLoss_AEP / InputPremium
+InputSDMultiple = (InputPremium - AdjustedLoss_AEP) / StdDev_AEPAL
+InputROE = (InputPremium - AdjustedLoss_AEP) / CapitalRequired
 ```
+
+`ExpectedLoss_AEP` and `StdDev_AEP` remain the gross capped annual aggregate
+loss metrics so the current AEP logic stays visible. `AdjustedLoss_AEP` and
+`StdDev_AEPAL` are the legacy pricing series after reinstatement premium.
+Capital remains intentionally based on the event/OEP risk metric, not adjusted
+annual aggregate VaR/TVaR.
 
 Cause breakdown values are expected loss contributions only:
 
@@ -474,8 +513,8 @@ the manifest is missing, so local smoke tests can run without Excel.
 VBA should load these into:
 
 ```text
-J26:AB41
-AE26:AO41
+J26:AD41
+AG26:AQ41
 B107:AW121
 ```
 

@@ -779,7 +779,7 @@ xl_pricing_tool_xlsimulation_simulate_cause <- function(cause, source, settings)
   model <- toupper(trimws(cause$ModelSource))
 
   if (identical(family, "ModeledCAT") && model %in% c("CTR", "TS")) {
-    events <- xl_pricing_tool_xlsimulation_simulate_elt(source$data, settings$SimulationYears)
+    events <- xl_pricing_tool_xlsimulation_simulate_elt(source$data, min(settings$SimulationYears, 10000L))
   } else if (identical(family, "ModeledCAT") && identical(model, "RMS")) {
     events <- xl_pricing_tool_xlsimulation_simulate_rms(source$data, settings$SimulationYears)
   } else if (identical(family, "FS")) {
@@ -916,9 +916,9 @@ xl_pricing_tool_xlsimulation_layer_results <- function(layers, active_causes, co
   breakdown_rows <- list()
   header <- c(
     "LayerID", "LayerName", "IncludedCauses", "Limit", "Deductible", "Reinstatements", "InputROL",
-    "InputPremium", "ReinstatementFactor", "ExpectedLoss_AEP", "StdDev_AEP", "SelectedVaR_OEP",
-    "SelectedTVaR_OEP", "SelectedRiskMetric_OEP", "CapitalRequired", "LossCostROL", "InputLossRatio",
-    "InputSDMultiple", "InputROE"
+    "InputPremium", "ReinstatementFactor", "ExpectedLoss_AEP", "StdDev_AEP", "AdjustedLoss_AEP",
+    "StdDev_AEPAL", "SelectedVaR_OEP", "SelectedTVaR_OEP", "SelectedRiskMetric_OEP", "CapitalRequired",
+    "LossCostROL", "InputLossRatio", "InputSDMultiple", "InputROE"
   )
   output_rows[[1]] <- header
   breakdown_rows[[1]] <- c("LayerID", active_causes$CauseID)
@@ -945,19 +945,25 @@ xl_pricing_tool_xlsimulation_layer_results <- function(layers, active_causes, co
     }
 
     total_uncapped <- rowSums(by_cause)
-    reinstatement_factor <- 1 + layer$Reinstatements * layer$ReinstatementPct
-    annual_capacity <- layer$Limit * reinstatement_factor
+    annual_capacity <- layer$Limit * (layer$Reinstatements + 1)
     annual_aep <- pmin(total_uncapped, annual_capacity)
     cap_factor <- ifelse(total_uncapped > 0, annual_aep / total_uncapped, 0)
     capped_by_cause <- by_cause * cap_factor
 
     expected_loss <- mean(annual_aep)
     sd_loss <- stats::sd(annual_aep)
+    base_input_premium <- layer$Limit * layer$InputROL
+    reinstatements_used <- pmin(annual_aep / layer$Limit, layer$Reinstatements)
+    reinstatement_factor <- mean(reinstatements_used)
+    reinstatement_premium <- reinstatements_used * layer$ReinstatementPct * base_input_premium
+    annual_adjusted <- annual_aep - reinstatement_premium
+    adjusted_loss <- mean(annual_adjusted)
+    sd_adjusted_loss <- stats::sd(annual_adjusted)
     selected_var <- xl_pricing_tool_xlsimulation_var(oep, settings$ReturnPeriod)
     selected_tvar <- xl_pricing_tool_xlsimulation_tvar(oep, selected_var)
     selected_metric <- if (identical(settings$RiskMeasure, "VAR")) selected_var else selected_tvar
-    capital <- selected_metric - expected_loss
-    input_premium <- layer$Limit * layer$InputROL * reinstatement_factor
+    capital <- selected_metric - adjusted_loss
+    input_premium <- base_input_premium
 
     output_rows[[length(output_rows) + 1L]] <- c(
       layer$LayerID,
@@ -971,14 +977,16 @@ xl_pricing_tool_xlsimulation_layer_results <- function(layers, active_causes, co
       reinstatement_factor,
       expected_loss,
       sd_loss,
+      adjusted_loss,
+      sd_adjusted_loss,
       selected_var,
       selected_tvar,
       selected_metric,
       capital,
       xl_pricing_tool_xlsimulation_safe_div(expected_loss, layer$Limit),
-      xl_pricing_tool_xlsimulation_safe_div(expected_loss, input_premium),
-      xl_pricing_tool_xlsimulation_safe_div(input_premium - expected_loss, sd_loss),
-      xl_pricing_tool_xlsimulation_safe_div(input_premium - expected_loss, capital)
+      xl_pricing_tool_xlsimulation_safe_div(adjusted_loss, input_premium),
+      xl_pricing_tool_xlsimulation_safe_div(input_premium - adjusted_loss, sd_adjusted_loss),
+      xl_pricing_tool_xlsimulation_safe_div(input_premium - adjusted_loss, capital)
     )
 
     breakdown_rows[[length(breakdown_rows) + 1L]] <- c(
