@@ -311,6 +311,14 @@ Private Function BTK_ExportRangeToCsv(ByVal sourceRange As Range, ByVal csvPath 
     Dim r As Long
     Dim c As Long
     Dim lineValues() As String
+    Dim fileOpen As Boolean
+    Dim errNumber As Long
+    Dim errSource As String
+    Dim errDescription As String
+    Dim errHelpFile As String
+    Dim errHelpContext As Long
+
+    On Error GoTo ExportFailed
 
     Set found = sourceRange.Find(What:="*", After:=sourceRange.Cells(1, 1), LookIn:=xlFormulas, LookAt:=xlPart, SearchOrder:=xlByRows, SearchDirection:=xlPrevious, MatchCase:=False)
     If found Is Nothing Then
@@ -324,6 +332,7 @@ Private Function BTK_ExportRangeToCsv(ByVal sourceRange As Range, ByVal csvPath 
 
     fileNo = FreeFile
     Open csvPath For Output As #fileNo
+    fileOpen = True
     ReDim lineValues(1 To sourceRange.Columns.Count)
 
     For startOffset = 1 To lastRowOffset Step CHUNK_ROWS
@@ -343,7 +352,22 @@ Private Function BTK_ExportRangeToCsv(ByVal sourceRange As Range, ByVal csvPath 
     Next startOffset
 
     Close #fileNo
+    fileOpen = False
     BTK_ExportRangeToCsv = lastRowOffset
+    Exit Function
+
+ExportFailed:
+    errNumber = Err.Number
+    errSource = Err.Source
+    errDescription = Err.Description
+    errHelpFile = Err.HelpFile
+    errHelpContext = Err.HelpContext
+    If fileOpen Then
+        On Error Resume Next
+        Close #fileNo
+        On Error GoTo 0
+    End If
+    Err.Raise errNumber, errSource, errDescription, errHelpFile, errHelpContext
 End Function
 
 Private Function BTK_PrepareXLSimulationUpdateInputs(ByVal sheetName As String, ByVal outputFolder As String) As String
@@ -368,6 +392,14 @@ Private Function BTK_PrepareXLSimulationUpdateInputs(ByVal sheetName As String, 
     Dim rowsText As String
     Dim colsText As String
     Dim manifestRow() As String
+    Dim manifestOpen As Boolean
+    Dim errNumber As Long
+    Dim errSource As String
+    Dim errDescription As String
+    Dim errHelpFile As String
+    Dim errHelpContext As Long
+
+    On Error GoTo PrepareFailed
 
     outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
     If Right$(outputFolder, 1) <> Application.PathSeparator Then
@@ -381,6 +413,7 @@ Private Function BTK_PrepareXLSimulationUpdateInputs(ByVal sheetName As String, 
     Set ws = ThisWorkbook.Worksheets(sheetName)
     manifestNo = FreeFile
     Open manifestPath For Output As #manifestNo
+    manifestOpen = True
     ReDim manifestRow(1 To 14)
 
     manifestRow(1) = BTK_CsvEscape("CauseID")
@@ -447,7 +480,7 @@ Private Function BTK_PrepareXLSimulationUpdateInputs(ByVal sheetName As String, 
                 Set sourceRange = Nothing
                 On Error Resume Next
                 Set sourceRange = ws.Range(locationText)
-                On Error GoTo 0
+                On Error GoTo PrepareFailed
                 If sourceRange Is Nothing Then
                     Err.Raise vbObjectError + 5121, BTK_SOURCE, "XLSimulation active cause has invalid Location: " & causeId & " = " & locationText
                 End If
@@ -483,7 +516,22 @@ Private Function BTK_PrepareXLSimulationUpdateInputs(ByVal sheetName As String, 
     Next row
 
     Close #manifestNo
+    manifestOpen = False
     BTK_PrepareXLSimulationUpdateInputs = outputFolder
+    Exit Function
+
+PrepareFailed:
+    errNumber = Err.Number
+    errSource = Err.Source
+    errDescription = Err.Description
+    errHelpFile = Err.HelpFile
+    errHelpContext = Err.HelpContext
+    If manifestOpen Then
+        On Error Resume Next
+        Close #manifestNo
+        On Error GoTo 0
+    End If
+    Err.Raise errNumber, errSource, errDescription, errHelpFile, errHelpContext
 End Function
 
 Public Sub BTK_BrowseXLSimulationSourceFile()
@@ -497,7 +545,7 @@ Public Sub BTK_BrowseXLSimulationSourceFile()
 
     On Error GoTo BrowseFailed
 
-    If ActiveSheet.Name = "RMStoYELT" Then
+    If GRe_IsRMStoYELTSheet(ActiveSheet) Then
         If Not Intersect(ActiveCell, ActiveSheet.Range("C14:D14")) Is Nothing Then
             BTK_BrowseRMStoYELTFolder
         Else
@@ -506,12 +554,12 @@ Public Sub BTK_BrowseXLSimulationSourceFile()
         Exit Sub
     End If
 
-    If ActiveSheet.Name <> "Sim_Variations" Then
-        MsgBox "Select a FilePath cell on Sim_Variations first.", vbExclamation, "GRe Tools"
+    If Not GRe_IsXLSimulationSheet(ActiveSheet) Then
+        MsgBox "Select a FilePath cell on an XL Simulation sheet first.", vbExclamation, "GRe Tools"
         Exit Sub
     End If
 
-    Set ws = ThisWorkbook.Worksheets("Sim_Variations")
+    Set ws = ActiveSheet
     Set selectedCell = ActiveCell
 
     If selectedCell.CountLarge <> 1 _
@@ -562,7 +610,12 @@ Public Sub BTK_AddXLSimulationBrowseButton()
 
     On Error GoTo AddButtonFailed
 
-    Set ws = ThisWorkbook.Worksheets("Sim_Variations")
+    If Not GRe_IsXLSimulationSheet(ActiveSheet) Then
+        MsgBox "Open an XL Simulation sheet before adding the Browse Source button.", vbExclamation, "GRe Tools"
+        Exit Sub
+    End If
+
+    Set ws = ActiveSheet
     Set anchor = ws.Range("G48")
 
     BTK_DeleteShapeIfExists ws, BUTTON_NAME
@@ -608,12 +661,12 @@ Public Sub BTK_BrowseRMStoYELTSourceFile()
 
     On Error GoTo BrowseFailed
 
-    If ActiveSheet.Name <> "RMStoYELT" Then
-        MsgBox "Select a FilePath cell on RMStoYELT first.", vbExclamation, "GRe Tools"
+    If Not GRe_IsRMStoYELTSheet(ActiveSheet) Then
+        MsgBox "Select a FilePath cell on an RMStoYELT sheet first.", vbExclamation, "GRe Tools"
         Exit Sub
     End If
 
-    Set ws = ThisWorkbook.Worksheets("RMStoYELT")
+    Set ws = ActiveSheet
     Set selectedRange = Selection
     Set targetRange = Intersect(selectedRange, ws.Range("D27:D114"))
     If targetRange Is Nothing Then
@@ -664,12 +717,12 @@ Public Sub BTK_BrowseRMStoYELTFolder()
 
     On Error GoTo BrowseFailed
 
-    If ActiveSheet.Name <> "RMStoYELT" Then
-        MsgBox "Select C14 or D14 on RMStoYELT first.", vbExclamation, "GRe Tools"
+    If Not GRe_IsRMStoYELTSheet(ActiveSheet) Then
+        MsgBox "Select C14 or D14 on an RMStoYELT sheet first.", vbExclamation, "GRe Tools"
         Exit Sub
     End If
 
-    Set ws = ThisWorkbook.Worksheets("RMStoYELT")
+    Set ws = ActiveSheet
     Set selectedCell = ActiveCell
     If selectedCell.CountLarge <> 1 _
         Or Intersect(selectedCell, ws.Range("C14:D14")) Is Nothing Then
@@ -1115,6 +1168,24 @@ Private Function GRe_ObjectiveKey(ByVal objectiveText As String) As String
     GRe_ObjectiveKey = key
 End Function
 
+Private Function GRe_IsXLSimulationSheet(ByVal ws As Worksheet) As Boolean
+    Select Case GRe_ObjectiveKey(CStr(ws.Range("A1").Value))
+        Case "xlsimulation", "xl simulation", "xl simulations", "sim variations"
+            GRe_IsXLSimulationSheet = True
+        Case Else
+            GRe_IsXLSimulationSheet = False
+    End Select
+End Function
+
+Private Function GRe_IsRMStoYELTSheet(ByVal ws As Worksheet) As Boolean
+    Select Case GRe_ObjectiveKey(CStr(ws.Range("A1").Value))
+        Case "rmstoyelt", "rms toyelt", "rms to yelt"
+            GRe_IsRMStoYELTSheet = True
+        Case Else
+            GRe_IsRMStoYELTSheet = False
+    End Select
+End Function
+
 Private Function GRe_ToolIdForObjective(ByVal objectiveText As String) As String
     Select Case GRe_ObjectiveKey(objectiveText)
         Case "exposure map", "china exposure map"
@@ -1328,7 +1399,7 @@ Public Sub GRe_RibbonBuild(ByVal control As Object)
 End Sub
 
 Public Sub GRe_RibbonBrowseXLSimulationSource(ByVal control As Object)
-    If ActiveSheet.Name = "RMStoYELT" Then
+    If GRe_IsRMStoYELTSheet(ActiveSheet) Then
         If Not Intersect(ActiveCell, ActiveSheet.Range("C14:D14")) Is Nothing Then
             BTK_BrowseRMStoYELTFolder
         Else
