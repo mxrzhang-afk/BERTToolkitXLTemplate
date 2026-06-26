@@ -56,6 +56,12 @@ actions:
     status: implemented
   relativepricing_build:
     status: not_defined
+  rmstoyelt_gather:
+    status: implemented
+  rmstoyelt_update:
+    status: implemented
+  rmstoyelt_build:
+    status: not_defined
 tabs:
   Input_GNPI:
     marker: "<<GNPI>>"
@@ -425,6 +431,51 @@ tabs:
       output_scope: "Only RelativePrice!T14:V... and BTK_RelativePricing_Curve_* shapes are overwritten by VBA. Deviation and pricing-structure formulas are not changed."
     build:
       function: xl_pricing_tool_relativepricing_build
+      status: not_defined
+  RMStoYELT:
+    marker: "<<RMStoYELT>>"
+    gather:
+      function: xl_pricing_tool_rmstoyelt_gather
+      status: implemented
+      purpose: "Populate B27:G114 declarations from the bulk input folder in C14."
+      input_controls:
+        simulation_years: RMStoYELT!C6
+        bulk_input_folder: RMStoYELT!C14
+        bulk_output_folder: RMStoYELT!D14
+      output_scope: "Only RMStoYELT!B27:G114 is overwritten by the VBA refresh step. If C14 is blank, gather leaves declarations unchanged."
+      output_file: rmstoyelt/rmstoyelt_declarations.csv
+    update:
+      function: xl_pricing_tool_rmstoyelt_update
+      status: implemented
+      purpose: "Read active RMS ELT declarations and generate YELT CSV files with Monte Carlo event occurrence simulation."
+      declaration_table:
+        range: RMStoYELT!B27:G114
+        columns:
+          - CauseID
+          - Peril
+          - FilePath
+          - Active
+          - OutDir
+          - OutFileName
+      rms_input_columns:
+        - Event ID
+        - Event Rate
+        - Mean Loss
+        - Std Dev Ind
+        - Std Dev Corr
+        - Exposure
+      yelt_output_columns:
+        - SIMULATIONNUMBER
+        - PHYSICALEVENTID
+        - LOSS
+      rules:
+        lambda: "sum(Event Rate)"
+        occurrence_count: "N ~ Poisson(lambda) per simulation year"
+        event_sampling: "P(event_i) = Event Rate_i / lambda"
+        severity: "Scaled Beta using Mean, Sdi + Sdc, and Exposure; deterministic Mean when uncertainty is zero or invalid."
+        overwrite_protection: "Update fails if the declared output path equals the source FilePath."
+    build:
+      function: xl_pricing_tool_rmstoyelt_build
       status: not_defined
 validation:
   scope: "Tab/action-specific. The XL pricing package validator only verifies that the workbook can be read; individual actions own their required sheets, ranges, and source tabs."

@@ -645,6 +645,10 @@ xl_pricing_tool_xlsimulation_parse_source_table <- function(cause, raw, external
     rms <- xl_pricing_tool_xlsimulation_parse_external_rms(cause, raw)
     if (!is.null(rms)) return(rms)
   }
+  if (isTRUE(external) && identical(family, "ModeledCAT") && model %in% c("CTR", "TS")) {
+    ctr_ts <- xl_pricing_tool_xlsimulation_parse_external_ctr_ts(cause, raw)
+    if (!is.null(ctr_ts)) return(ctr_ts)
+  }
 
   if (nrow(raw) < 2) {
     stop(sprintf("XLSimulation cause %s source CSV has no data rows.", cause$CauseID), call. = FALSE)
@@ -693,6 +697,40 @@ xl_pricing_tool_xlsimulation_parse_external_rms <- function(cause, raw) {
   data <- xl_pricing_tool_xlsimulation_drop_blank_rows(data)
   xl_pricing_tool_xlsimulation_validate_source(cause, expected_headers, data)
   list(headers = expected_headers, data = data)
+}
+
+xl_pricing_tool_xlsimulation_parse_external_ctr_ts <- function(cause, raw) {
+  expected_headers <- c("EventID", "Year", "Loss")
+  if (ncol(raw) >= 3) {
+    first_headers <- trimws(as.character(raw[1, seq_len(3)]))
+    if (all(first_headers == expected_headers)) {
+      data <- raw[-1, seq_len(3), drop = FALSE]
+      names(data) <- expected_headers
+      data <- xl_pricing_tool_xlsimulation_drop_blank_rows(data)
+      xl_pricing_tool_xlsimulation_validate_source(cause, expected_headers, data)
+      return(list(headers = expected_headers, data = data))
+    }
+  }
+
+  if (ncol(raw) < 6) return(NULL)
+
+  year <- suppressWarnings(as.integer(raw[[1]]))
+  loss <- suppressWarnings(as.numeric(raw[[2]]))
+  event_id <- trimws(as.character(raw[[6]]))
+  data_rows <- is.finite(year) & is.finite(loss) & loss > 0 & nzchar(event_id)
+  first_data <- which(data_rows)
+  if (length(first_data) == 0) return(NULL)
+
+  source <- raw[first_data[[1]]:nrow(raw), , drop = FALSE]
+  out <- data.frame(
+    EventID = trimws(as.character(source[[6]])),
+    Year = trimws(as.character(source[[1]])),
+    Loss = trimws(as.character(source[[2]])),
+    stringsAsFactors = FALSE
+  )
+  out <- xl_pricing_tool_xlsimulation_drop_blank_rows(out)
+  xl_pricing_tool_xlsimulation_validate_source(cause, expected_headers, out)
+  list(headers = expected_headers, data = out)
 }
 
 xl_pricing_tool_xlsimulation_validate_source <- function(cause, headers, data) {

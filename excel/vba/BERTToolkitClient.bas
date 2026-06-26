@@ -497,6 +497,15 @@ Public Sub BTK_BrowseXLSimulationSourceFile()
 
     On Error GoTo BrowseFailed
 
+    If ActiveSheet.Name = "RMStoYELT" Then
+        If Not Intersect(ActiveCell, ActiveSheet.Range("C14:D14")) Is Nothing Then
+            BTK_BrowseRMStoYELTFolder
+        Else
+            BTK_BrowseRMStoYELTSourceFile
+        End If
+        Exit Sub
+    End If
+
     If ActiveSheet.Name <> "Sim_Variations" Then
         MsgBox "Select a FilePath cell on Sim_Variations first.", vbExclamation, "GRe Tools"
         Exit Sub
@@ -585,6 +594,122 @@ Public Sub BTK_AddXLSimulationBrowseButton()
 AddButtonFailed:
     MsgBox Err.Description, vbCritical, "GRe Tools"
 End Sub
+
+Public Sub BTK_BrowseRMStoYELTSourceFile()
+    Dim ws As Worksheet
+    Dim selectedRange As Range
+    Dim targetRange As Range
+    Dim selectedFiles As Variant
+    Dim selectedCount As Long
+    Dim cellCount As Long
+    Dim i As Long
+    Dim selectedPath As String
+    Dim rowNumber As Long
+
+    On Error GoTo BrowseFailed
+
+    If ActiveSheet.Name <> "RMStoYELT" Then
+        MsgBox "Select a FilePath cell on RMStoYELT first.", vbExclamation, "GRe Tools"
+        Exit Sub
+    End If
+
+    Set ws = ThisWorkbook.Worksheets("RMStoYELT")
+    Set selectedRange = Selection
+    Set targetRange = Intersect(selectedRange, ws.Range("D27:D114"))
+    If targetRange Is Nothing Then
+        MsgBox "Select one or more FilePath cells in D27:D114 first.", vbExclamation, "GRe Tools"
+        Exit Sub
+    End If
+
+    selectedFiles = Application.GetOpenFilename( _
+        FileFilter:="RMS ELT files (*.csv),*.csv,All files (*.*),*.*", _
+        Title:="Select RMS ELT source file(s)", _
+        MultiSelect:=True)
+
+    If VarType(selectedFiles) = vbBoolean And selectedFiles = False Then
+        Exit Sub
+    End If
+
+    selectedCount = UBound(selectedFiles) - LBound(selectedFiles) + 1
+    cellCount = targetRange.Cells.Count
+    If selectedCount > cellCount Then
+        MsgBox "You selected more files than FilePath cells. Select enough cells in D27:D114 and try again.", vbExclamation, "GRe Tools"
+        Exit Sub
+    End If
+
+    For i = 1 To selectedCount
+        selectedPath = CStr(selectedFiles(LBound(selectedFiles) + i - 1))
+        rowNumber = targetRange.Cells(i, 1).Row
+        ws.Cells(rowNumber, "D").Value = selectedPath
+        If Len(Trim$(CStr(ws.Cells(rowNumber, "B").Value))) = 0 Then
+            ws.Cells(rowNumber, "B").Value = BTK_FileBaseName(selectedPath)
+        End If
+        If Len(Trim$(CStr(ws.Cells(rowNumber, "F").Value))) = 0 And Len(Trim$(CStr(ws.Range("D14").Value))) > 0 Then
+            ws.Cells(rowNumber, "F").Value = CStr(ws.Range("D14").Value)
+        End If
+        If Len(Trim$(CStr(ws.Cells(rowNumber, "G").Value))) = 0 Then
+            ws.Cells(rowNumber, "G").Value = BTK_FileName(selectedPath)
+        End If
+    Next i
+    Exit Sub
+
+BrowseFailed:
+    MsgBox Err.Description, vbCritical, "GRe Tools"
+End Sub
+
+Public Sub BTK_BrowseRMStoYELTFolder()
+    Dim ws As Worksheet
+    Dim selectedCell As Range
+    Dim dialog As FileDialog
+
+    On Error GoTo BrowseFailed
+
+    If ActiveSheet.Name <> "RMStoYELT" Then
+        MsgBox "Select C14 or D14 on RMStoYELT first.", vbExclamation, "GRe Tools"
+        Exit Sub
+    End If
+
+    Set ws = ThisWorkbook.Worksheets("RMStoYELT")
+    Set selectedCell = ActiveCell
+    If selectedCell.CountLarge <> 1 _
+        Or Intersect(selectedCell, ws.Range("C14:D14")) Is Nothing Then
+        MsgBox "Select C14 for input folder or D14 for output folder first.", vbExclamation, "GRe Tools"
+        Exit Sub
+    End If
+
+    Set dialog = Application.FileDialog(msoFileDialogFolderPicker)
+    With dialog
+        .Title = "Select RMStoYELT folder"
+        .AllowMultiSelect = False
+        If .Show <> -1 Then Exit Sub
+        selectedCell.Value = .SelectedItems(1)
+    End With
+    Exit Sub
+
+BrowseFailed:
+    MsgBox Err.Description, vbCritical, "GRe Tools"
+End Sub
+
+Private Function BTK_FileName(ByVal filePath As String) As String
+    Dim parts() As String
+
+    filePath = Replace(filePath, "/", Application.PathSeparator)
+    parts = Split(filePath, Application.PathSeparator)
+    BTK_FileName = parts(UBound(parts))
+End Function
+
+Private Function BTK_FileBaseName(ByVal filePath As String) As String
+    Dim fileName As String
+    Dim dotPos As Long
+
+    fileName = BTK_FileName(filePath)
+    dotPos = InStrRev(fileName, ".")
+    If dotPos > 1 Then
+        BTK_FileBaseName = Left$(fileName, dotPos - 1)
+    Else
+        BTK_FileBaseName = fileName
+    End If
+End Function
 
 Private Function BTK_RefreshAggOutput(ByVal outputFolder As String, ByVal sheetName As String) As String
     Dim ws As Worksheet
@@ -746,6 +871,41 @@ Private Function BTK_RefreshXLSimulationUpdate(ByVal outputFolder As String, ByV
     BTK_LoadCsvToRange oepPath, ws.Range("B107")
 
     BTK_RefreshXLSimulationUpdate = "XLSimulation layer output, breakdown, and OEP tables refreshed on " & sheetName & "."
+End Function
+
+Private Function BTK_RefreshRMStoYELTGather(ByVal outputFolder As String, ByVal sheetName As String) As String
+    Dim ws As Worksheet
+    Dim rmstoyeltFolder As String
+    Dim declarationsPath As String
+    Dim lastRow As Long
+
+    If Len(outputFolder) = 0 Then
+        BTK_RefreshRMStoYELTGather = "RMStoYELT gather refresh skipped: could not find output folder in R result."
+        Exit Function
+    End If
+
+    outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
+    If Right$(outputFolder, 1) <> Application.PathSeparator Then
+        outputFolder = outputFolder & Application.PathSeparator
+    End If
+
+    rmstoyeltFolder = outputFolder & "rmstoyelt" & Application.PathSeparator
+    declarationsPath = rmstoyeltFolder & "rmstoyelt_declarations.csv"
+    If Len(Dir(declarationsPath)) = 0 Then
+        BTK_RefreshRMStoYELTGather = "RMStoYELT declarations unchanged because gather did not create a declaration file."
+        Exit Function
+    End If
+
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    lastRow = ws.Cells(ws.Rows.Count, "B").End(xlUp).Row
+    If lastRow < 27 Then
+        lastRow = 27
+    End If
+
+    ws.Range("B27:G" & Application.WorksheetFunction.Max(lastRow, 114)).ClearContents
+    BTK_LoadCsvToRange declarationsPath, ws.Range("B27")
+
+    BTK_RefreshRMStoYELTGather = "RMStoYELT declarations refreshed on " & sheetName & "."
 End Function
 
 Private Function BTK_RefreshRiskFitCharts(ByVal outputFolder As String, ByVal sheetName As String) As String
@@ -975,6 +1135,8 @@ Private Function GRe_ToolIdForObjective(ByVal objectiveText As String) As String
             GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "relativepricing", "relative pricing"
             GRe_ToolIdForObjective = "xl_pricing_tool"
+        Case "rmstoyelt", "rms toyelt", "rms to yelt"
+            GRe_ToolIdForObjective = "xl_pricing_tool"
         Case "curve fit risk"
             GRe_ToolIdForObjective = "curve_fit_risk"
         Case Else
@@ -998,6 +1160,8 @@ Private Function GRe_ActionForObjective(ByVal objectiveText As String, ByVal act
             GRe_ActionForObjective = "xlsimulation_" & LCase$(action)
         Case "relativepricing", "relative pricing"
             GRe_ActionForObjective = "relativepricing_" & LCase$(action)
+        Case "rmstoyelt", "rms toyelt", "rms to yelt"
+            GRe_ActionForObjective = "rmstoyelt_" & LCase$(action)
         Case Else
             GRe_ActionForObjective = LCase$(action)
     End Select
@@ -1093,6 +1257,12 @@ Private Sub GRe_HandleResult(ByVal toolId As String, ByVal action As String, ByV
         ThisWorkbook.Save
     End If
 
+    If refreshWorkbook And toolId = "xl_pricing_tool" And action = "rmstoyelt_gather" And InStr(1, resultText, "RMStoYELT gather completed.", vbTextCompare) > 0 Then
+        outputFolder = BTK_OutputFolderFromResult(resultText)
+        resultText = resultText & vbCrLf & vbCrLf & BTK_RefreshRMStoYELTGather(outputFolder, activeSheetName)
+        ThisWorkbook.Save
+    End If
+
     MsgBox resultText, vbInformation, "GRe Tools"
 End Sub
 
@@ -1158,7 +1328,15 @@ Public Sub GRe_RibbonBuild(ByVal control As Object)
 End Sub
 
 Public Sub GRe_RibbonBrowseXLSimulationSource(ByVal control As Object)
-    BTK_BrowseXLSimulationSourceFile
+    If ActiveSheet.Name = "RMStoYELT" Then
+        If Not Intersect(ActiveCell, ActiveSheet.Range("C14:D14")) Is Nothing Then
+            BTK_BrowseRMStoYELTFolder
+        Else
+            BTK_BrowseRMStoYELTSourceFile
+        End If
+    Else
+        BTK_BrowseXLSimulationSourceFile
+    End If
 End Sub
 
 Public Sub GRe_RibbonGatherFallback()

@@ -51,6 +51,9 @@ xl_pricing_tool_validate_action <- function(workbook_path, action, context = lis
     relativepricing_gather = if (is.null(active_sheet)) "RelativePrice" else active_sheet,
     relativepricing_update = c(if (is.null(active_sheet)) "RelativePrice" else active_sheet, "Input_Layers"),
     relativepricing_build = c(if (is.null(active_sheet)) "RelativePrice" else active_sheet, "Input_Layers"),
+    rmstoyelt_gather = if (is.null(active_sheet)) "RMStoYELT" else active_sheet,
+    rmstoyelt_update = if (is.null(active_sheet)) "RMStoYELT" else active_sheet,
+    rmstoyelt_build = if (is.null(active_sheet)) "RMStoYELT" else active_sheet,
     character()
   )
 
