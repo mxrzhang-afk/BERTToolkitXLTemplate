@@ -6,10 +6,12 @@ _BERTToolkitTemp/
 **/_BERTToolkitTemp/
 *.log
 
+# Separately versioned development repos
+geo_coding_tool/
+
 # Local workbook recovery files
 *.bak
 *.bak_*
 *.corrupt_*
 *.tmp
 ~$*
-
