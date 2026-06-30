@@ -36,3 +36,9 @@ tools:
     schema: ""
     defaults: ""
     template: ""
+  goecode_tool:
+    enabled: true
+    module: "r/tools/goecode_tool/tool.R"
+    schema: ""
+    defaults: ""
+    template: "excel/templates/Template_Geocode_Tool.xlsm"

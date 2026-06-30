@@ -14,6 +14,7 @@ source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "xlsimulation.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "relativepricing.R"))
 source(file.path(BTK_ROOT, "r", "tools", "xl_pricing_tool", "rmstoyelt.R"))
 source(file.path(BTK_ROOT, "r", "tools", "curve_fit_risk", "tool.R"))
+source(file.path(BTK_ROOT, "r", "tools", "goecode_tool", "tool.R"))
 
 toolkit_version <- function() {
   "0.1.0"
@@ -67,6 +68,16 @@ toolkit_registry <- function() {
       actions = list(),
       validate = curve_fit_risk_validate,
       name = "Curve Fit Risk"
+    ),
+    goecode_tool = list(
+      actions = list(
+        inputnorm_gather = goecode_tool_inputnorm_gather,
+        inputnorm_update = goecode_tool_inputnorm_update,
+        inputnorm_build = goecode_tool_inputnorm_build
+      ),
+      run = goecode_tool_inputnorm_update,
+      validate = goecode_tool_validate,
+      name = "Geocode Tool"
     )
   )
 }
