@@ -3,6 +3,7 @@ Option Explicit
 
 Private Const GCT_SOURCE As String = "GeoCodingToolkitClient"
 Private Const GCT_BOOTSTRAP As String = "C:/CompanyTools/BERTToolkit/r/bootstrap.R"
+Private Const GCT_PREVIEW_MAX_ROWS As Long = 10000
 
 Private Function GCT_InstallHelp() As String
     GCT_InstallHelp = _
@@ -103,12 +104,68 @@ Private Function GCT_IsInputNormSheet(ByVal ws As Worksheet) As Boolean
     GCT_IsInputNormSheet = (GCT_ObjectiveKey(CStr(ws.Range("A1").Value)) = "inputnorm")
 End Function
 
-Private Function GCT_OutputPath(ByVal outputFolder As String, ByVal fileName As String) As String
+Private Function GCT_IsHistCrossSheet(ByVal ws As Worksheet) As Boolean
+    GCT_IsHistCrossSheet = (GCT_ObjectiveKey(CStr(ws.Range("A1").Value)) = "histcross")
+End Function
+
+Private Function GCT_IsSupportedSheet(ByVal ws As Worksheet) As Boolean
+    GCT_IsSupportedSheet = GCT_IsInputNormSheet(ws) Or GCT_IsHistCrossSheet(ws)
+End Function
+
+Private Function GCT_ActionPrefix(ByVal ws As Worksheet) As String
+    If GCT_IsInputNormSheet(ws) Then
+        GCT_ActionPrefix = "inputnorm"
+    ElseIf GCT_IsHistCrossSheet(ws) Then
+        GCT_ActionPrefix = "histcross"
+    Else
+        Err.Raise vbObjectError + 5307, GCT_SOURCE, "Open an <<inputnorm>> or <<HistCross>> sheet before running this action."
+    End If
+End Function
+
+Private Function GCT_OutputPath(ByVal outputFolder As String, ByVal folderName As String, ByVal fileName As String) As String
     outputFolder = Replace(outputFolder, "/", Application.PathSeparator)
     If Right$(outputFolder, 1) <> Application.PathSeparator Then
         outputFolder = outputFolder & Application.PathSeparator
     End If
-    GCT_OutputPath = outputFolder & "inputnorm" & Application.PathSeparator & fileName
+    GCT_OutputPath = outputFolder & folderName & Application.PathSeparator & fileName
+End Function
+
+Private Function GCT_BlockHasData(ByVal ws As Worksheet, ByVal firstCell As String, ByVal maxColumns As Long) As Boolean
+    Dim first As Range
+    Dim searchRange As Range
+    Dim found As Range
+
+    Set first = ws.Range(firstCell)
+    Set searchRange = ws.Range(first, ws.Cells(ws.Rows.Count, first.Column + maxColumns - 1))
+    Set found = searchRange.Find(What:="*", LookIn:=xlFormulas, SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
+    GCT_BlockHasData = Not found Is Nothing
+End Function
+
+Private Function GCT_LastDataRowInBlock(ByVal ws As Worksheet, ByVal firstCell As String, ByVal maxColumns As Long) As Long
+    Dim first As Range
+    Dim searchRange As Range
+    Dim found As Range
+
+    Set first = ws.Range(firstCell)
+    Set searchRange = ws.Range(first, ws.Cells(ws.Rows.Count, first.Column + maxColumns - 1))
+    Set found = searchRange.Find(What:="*", LookIn:=xlFormulas, SearchOrder:=xlByRows, SearchDirection:=xlPrevious)
+    If found Is Nothing Then
+        GCT_LastDataRowInBlock = first.Row - 1
+    Else
+        GCT_LastDataRowInBlock = found.Row
+    End If
+End Function
+
+Private Function GCT_AreaLabel(ByVal firstCell As String, ByVal maxColumns As Long) As String
+    Dim first As Range
+    Set first = ActiveSheet.Range(firstCell)
+    GCT_AreaLabel = firstCell & ":" & ActiveSheet.Cells(first.Row + GCT_PREVIEW_MAX_ROWS, first.Column + maxColumns - 1).Address(False, False)
+End Function
+
+Private Function GCT_ColumnAreaLabel(ByVal firstCell As String, ByVal maxColumns As Long) As String
+    Dim first As Range
+    Set first = ActiveSheet.Range(firstCell)
+    GCT_ColumnAreaLabel = firstCell & ":" & ActiveSheet.Cells(ActiveSheet.Rows.Count, first.Column + maxColumns - 1).Address(False, False)
 End Function
 
 Private Sub GCT_ClearRange(ByVal ws As Worksheet, ByVal firstCell As String, ByVal maxColumns As Long)
@@ -116,9 +173,50 @@ Private Sub GCT_ClearRange(ByVal ws As Worksheet, ByVal firstCell As String, ByV
     Dim lastRow As Long
 
     Set first = ws.Range(firstCell)
-    lastRow = ws.Rows.Count
-    ws.Range(first, first.Offset(lastRow - first.Row, maxColumns - 1)).ClearContents
+    lastRow = GCT_LastDataRowInBlock(ws, firstCell, maxColumns)
+    If lastRow >= first.Row Then
+        ws.Range(first, ws.Cells(lastRow, first.Column + maxColumns - 1)).ClearContents
+    End If
 End Sub
+
+Private Function GCT_ConfirmClearBeforeRefresh(ByVal action As String) As Boolean
+    Dim prefix As String
+    Dim warning As String
+
+    GCT_ConfirmClearBeforeRefresh = True
+    prefix = GCT_ActionPrefix(ActiveSheet)
+
+    If action = "gather" Then
+        If GCT_BlockHasData(ActiveSheet, "B26", 3) Then
+            warning = "B26:D"
+        End If
+    ElseIf action = "update" Then
+        If prefix = "inputnorm" Then
+            If GCT_BlockHasData(ActiveSheet, "N14", 27) Then
+                warning = GCT_AreaLabel("N14", 27)
+            End If
+        ElseIf prefix = "histcross" Then
+            If GCT_BlockHasData(ActiveSheet, "N14", 27) Then
+                warning = GCT_AreaLabel("N14", 27)
+            End If
+            If GCT_BlockHasData(ActiveSheet, "AP14", 27) Then
+                If Len(warning) > 0 Then warning = warning & " and "
+                warning = warning & GCT_ColumnAreaLabel("AP14", 27)
+            End If
+        End If
+    End If
+
+    If Len(warning) = 0 Then Exit Function
+
+    If MsgBox( _
+        "The refresh area " & warning & " already contains data." & vbCrLf & vbCrLf & _
+        "Clear this area before running " & UCase$(action) & "?", _
+        vbQuestion + vbYesNo, _
+        "Geocode Tool" _
+    ) <> vbYes Then
+        GCT_ConfirmClearBeforeRefresh = False
+    End If
+End Function
 
 Private Sub GCT_LoadCsvToRange(ByVal csvPath As String, ByVal destination As Range)
     If Len(Dir(csvPath)) = 0 Then
@@ -141,13 +239,13 @@ Public Sub GCT_BrowseInputNormSourceFile()
 
     On Error GoTo BrowseFailed
 
-    If Not GCT_IsInputNormSheet(ActiveSheet) Then
-        MsgBox "Open an <<inputnorm>> sheet before browsing for a source file.", vbExclamation, "Geocode Tool"
+    If Not GCT_IsSupportedSheet(ActiveSheet) Then
+        MsgBox "Open an <<inputnorm>> or <<HistCross>> sheet before browsing for a source file.", vbExclamation, "Geocode Tool"
         Exit Sub
     End If
 
     If ActiveCell.CountLarge <> 1 Or Intersect(ActiveCell, ActiveSheet.Range("C14")) Is Nothing Then
-        MsgBox "Select cell C14 on the active <<inputnorm>> sheet first.", vbExclamation, "Geocode Tool"
+        MsgBox "Select cell C14 on the active Geocode action sheet first.", vbExclamation, "Geocode Tool"
         Exit Sub
     End If
 
@@ -172,7 +270,7 @@ Public Function GCT_RefreshInputNormGather(ByVal outputFolder As String, ByVal s
     Dim mappingPath As String
 
     Set ws = ThisWorkbook.Worksheets(sheetName)
-    mappingPath = GCT_OutputPath(outputFolder, "inputnorm_header_mapping.csv")
+    mappingPath = GCT_OutputPath(outputFolder, "inputnorm", "inputnorm_header_mapping.csv")
 
     GCT_ClearRange ws, "B26", 3
     GCT_LoadCsvToRange mappingPath, ws.Range("B26")
@@ -180,12 +278,25 @@ Public Function GCT_RefreshInputNormGather(ByVal outputFolder As String, ByVal s
     GCT_RefreshInputNormGather = "InputNorm header mapping refreshed on " & sheetName & "."
 End Function
 
+Public Function GCT_RefreshHistCrossGather(ByVal outputFolder As String, ByVal sheetName As String) As String
+    Dim ws As Worksheet
+    Dim mappingPath As String
+
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    mappingPath = GCT_OutputPath(outputFolder, "histcross", "histcross_header_mapping.csv")
+
+    GCT_ClearRange ws, "B26", 3
+    GCT_LoadCsvToRange mappingPath, ws.Range("B26")
+
+    GCT_RefreshHistCrossGather = "HistCross header mapping refreshed on " & sheetName & "."
+End Function
+
 Public Function GCT_RefreshInputNormUpdate(ByVal outputFolder As String, ByVal sheetName As String) As String
     Dim ws As Worksheet
     Dim previewPath As String
 
     Set ws = ThisWorkbook.Worksheets(sheetName)
-    previewPath = GCT_OutputPath(outputFolder, "inputnorm_data_preview.csv")
+    previewPath = GCT_OutputPath(outputFolder, "inputnorm", "inputnorm_data_preview.csv")
 
     GCT_ClearRange ws, "N14", 27
     GCT_LoadCsvToRange previewPath, ws.Range("N14")
@@ -193,13 +304,30 @@ Public Function GCT_RefreshInputNormUpdate(ByVal outputFolder As String, ByVal s
     GCT_RefreshInputNormUpdate = "InputNorm normalized data preview refreshed on " & sheetName & "."
 End Function
 
+Public Function GCT_RefreshHistCrossUpdate(ByVal outputFolder As String, ByVal sheetName As String) As String
+    Dim ws As Worksheet
+    Dim matchedPath As String
+    Dim unmatchedPath As String
+
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    matchedPath = GCT_OutputPath(outputFolder, "histcross", "histcross_matched_preview.csv")
+    unmatchedPath = GCT_OutputPath(outputFolder, "histcross", "histcross_unmatched_preview.csv")
+
+    GCT_ClearRange ws, "N14", 27
+    GCT_ClearRange ws, "AP14", 27
+    GCT_LoadCsvToRange matchedPath, ws.Range("N14")
+    GCT_LoadCsvToRange unmatchedPath, ws.Range("AP14")
+
+    GCT_RefreshHistCrossUpdate = "HistCross matched and unmatched previews refreshed on " & sheetName & "."
+End Function
+
 Private Function GCT_DispatchTool(ByVal action As String, Optional ByVal outputDir As String = "") As Variant
     If Len(ThisWorkbook.Path) = 0 Then
         Err.Raise vbObjectError + 5305, GCT_SOURCE, "Please save the workbook before running a Geocode tool action."
     End If
 
-    If Not GCT_IsInputNormSheet(ActiveSheet) Then
-        Err.Raise vbObjectError + 5306, GCT_SOURCE, "Open an <<inputnorm>> sheet before running this action."
+    If Not GCT_IsSupportedSheet(ActiveSheet) Then
+        Err.Raise vbObjectError + 5306, GCT_SOURCE, "Open an <<inputnorm>> or <<HistCross>> sheet before running this action."
     End If
 
     ThisWorkbook.Save
@@ -208,7 +336,7 @@ Private Function GCT_DispatchTool(ByVal action As String, Optional ByVal outputD
     GCT_DispatchTool = GCT_CallR( _
         "BTK.DispatchTool", _
         "goecode_tool", _
-        "inputnorm_" & LCase$(action), _
+        GCT_ActionPrefix(ActiveSheet) & "_" & LCase$(action), _
         ThisWorkbook.FullName, _
         outputDir, _
         ActiveSheet.Name _
@@ -218,6 +346,7 @@ End Function
 Private Sub GCT_HandleResult(ByVal action As String, ByVal result As Variant)
     Dim resultText As String
     Dim outputFolder As String
+    Dim actionPrefix As String
 
     If IsError(result) Then
         MsgBox "BERT returned an Excel error before returning a text result." & vbCrLf & _
@@ -233,24 +362,37 @@ Private Sub GCT_HandleResult(ByVal action As String, ByVal result As Variant)
     End If
 
     outputFolder = GCT_OutputFolderFromResult(resultText)
-    If action = "gather" And InStr(1, resultText, "InputNorm gather completed.", vbTextCompare) > 0 Then
-        resultText = resultText & vbCrLf & vbCrLf & GCT_RefreshInputNormGather(outputFolder, ActiveSheet.Name)
-        ThisWorkbook.Save
+    actionPrefix = GCT_ActionPrefix(ActiveSheet)
+    If action = "gather" Then
+        If actionPrefix = "inputnorm" And InStr(1, resultText, "InputNorm gather completed.", vbTextCompare) > 0 Then
+            resultText = resultText & vbCrLf & vbCrLf & GCT_RefreshInputNormGather(outputFolder, ActiveSheet.Name)
+            ThisWorkbook.Save
+        ElseIf actionPrefix = "histcross" And InStr(1, resultText, "HistCross gather completed.", vbTextCompare) > 0 Then
+            resultText = resultText & vbCrLf & vbCrLf & GCT_RefreshHistCrossGather(outputFolder, ActiveSheet.Name)
+            ThisWorkbook.Save
+        End If
     End If
 
-    If action = "update" And InStr(1, resultText, "InputNorm update completed.", vbTextCompare) > 0 Then
-        resultText = resultText & vbCrLf & vbCrLf & GCT_RefreshInputNormUpdate(outputFolder, ActiveSheet.Name)
-        ThisWorkbook.Save
+    If action = "update" Then
+        If actionPrefix = "inputnorm" And InStr(1, resultText, "InputNorm update completed.", vbTextCompare) > 0 Then
+            resultText = resultText & vbCrLf & vbCrLf & GCT_RefreshInputNormUpdate(outputFolder, ActiveSheet.Name)
+            ThisWorkbook.Save
+        ElseIf actionPrefix = "histcross" And InStr(1, resultText, "HistCross update completed.", vbTextCompare) > 0 Then
+            resultText = resultText & vbCrLf & vbCrLf & GCT_RefreshHistCrossUpdate(outputFolder, ActiveSheet.Name)
+            ThisWorkbook.Save
+        End If
     End If
 
     MsgBox resultText, vbInformation, "Geocode Tool"
 End Sub
 
 Public Sub GCT_Gather()
+    If Not GCT_ConfirmClearBeforeRefresh("gather") Then Exit Sub
     GCT_HandleResult "gather", GCT_DispatchTool("gather")
 End Sub
 
 Public Sub GCT_Update()
+    If Not GCT_ConfirmClearBeforeRefresh("update") Then Exit Sub
     GCT_HandleResult "update", GCT_DispatchTool("update")
 End Sub
 

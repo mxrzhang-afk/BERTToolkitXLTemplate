@@ -73,7 +73,10 @@ toolkit_registry <- function() {
       actions = list(
         inputnorm_gather = goecode_tool_inputnorm_gather,
         inputnorm_update = goecode_tool_inputnorm_update,
-        inputnorm_build = goecode_tool_inputnorm_build
+        inputnorm_build = goecode_tool_inputnorm_build,
+        histcross_gather = goecode_tool_histcross_gather,
+        histcross_update = goecode_tool_histcross_update,
+        histcross_build = goecode_tool_histcross_build
       ),
       run = goecode_tool_inputnorm_update,
       validate = goecode_tool_validate,
