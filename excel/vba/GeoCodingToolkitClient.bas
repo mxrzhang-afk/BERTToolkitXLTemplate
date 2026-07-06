@@ -108,8 +108,12 @@ Private Function GCT_IsHistCrossSheet(ByVal ws As Worksheet) As Boolean
     GCT_IsHistCrossSheet = (GCT_ObjectiveKey(CStr(ws.Range("A1").Value)) = "histcross")
 End Function
 
+Private Function GCT_IsGeneralCrossWalkSheet(ByVal ws As Worksheet) As Boolean
+    GCT_IsGeneralCrossWalkSheet = (GCT_ObjectiveKey(CStr(ws.Range("A1").Value)) = "generalcrosswalk")
+End Function
+
 Private Function GCT_IsSupportedSheet(ByVal ws As Worksheet) As Boolean
-    GCT_IsSupportedSheet = GCT_IsInputNormSheet(ws) Or GCT_IsHistCrossSheet(ws)
+    GCT_IsSupportedSheet = GCT_IsInputNormSheet(ws) Or GCT_IsHistCrossSheet(ws) Or GCT_IsGeneralCrossWalkSheet(ws)
 End Function
 
 Private Function GCT_ActionPrefix(ByVal ws As Worksheet) As String
@@ -117,8 +121,10 @@ Private Function GCT_ActionPrefix(ByVal ws As Worksheet) As String
         GCT_ActionPrefix = "inputnorm"
     ElseIf GCT_IsHistCrossSheet(ws) Then
         GCT_ActionPrefix = "histcross"
+    ElseIf GCT_IsGeneralCrossWalkSheet(ws) Then
+        GCT_ActionPrefix = "generalcrosswalk"
     Else
-        Err.Raise vbObjectError + 5307, GCT_SOURCE, "Open an <<inputnorm>> or <<HistCross>> sheet before running this action."
+        Err.Raise vbObjectError + 5307, GCT_SOURCE, "Open an <<inputnorm>>, <<HistCross>>, or <<GeneralCrossWalk>> sheet before running this action."
     End If
 End Function
 
@@ -187,8 +193,18 @@ Private Function GCT_ConfirmClearBeforeRefresh(ByVal action As String) As Boolea
     prefix = GCT_ActionPrefix(ActiveSheet)
 
     If action = "gather" Then
-        If GCT_BlockHasData(ActiveSheet, "B26", 3) Then
-            warning = "B26:D"
+        If prefix = "generalcrosswalk" Then
+            If GCT_BlockHasData(ActiveSheet, "B26", 4) Then
+                warning = "B26:E"
+            End If
+            If Len(Trim$(CStr(ActiveSheet.Range("C14").Value))) > 0 And GCT_BlockHasData(ActiveSheet, "N14", 29) Then
+                If Len(warning) > 0 Then warning = warning & " and "
+                warning = warning & GCT_ColumnAreaLabel("N14", 29)
+            End If
+        Else
+            If GCT_BlockHasData(ActiveSheet, "B26", 3) Then
+                warning = "B26:D"
+            End If
         End If
     ElseIf action = "update" Then
         If prefix = "inputnorm" Then
@@ -202,6 +218,14 @@ Private Function GCT_ConfirmClearBeforeRefresh(ByVal action As String) As Boolea
             If GCT_BlockHasData(ActiveSheet, "AP14", 27) Then
                 If Len(warning) > 0 Then warning = warning & " and "
                 warning = warning & GCT_ColumnAreaLabel("AP14", 27)
+            End If
+        ElseIf prefix = "generalcrosswalk" Then
+            If GCT_BlockHasData(ActiveSheet, "AQ14", 54) Then
+                warning = GCT_ColumnAreaLabel("AQ14", 54)
+            End If
+            If GCT_BlockHasData(ActiveSheet, "CS14", 40) Then
+                If Len(warning) > 0 Then warning = warning & " and "
+                warning = warning & GCT_ColumnAreaLabel("CS14", 40)
             End If
         End If
     End If
@@ -240,7 +264,7 @@ Public Sub GCT_BrowseInputNormSourceFile()
     On Error GoTo BrowseFailed
 
     If Not GCT_IsSupportedSheet(ActiveSheet) Then
-        MsgBox "Open an <<inputnorm>> or <<HistCross>> sheet before browsing for a source file.", vbExclamation, "Geocode Tool"
+        MsgBox "Open an <<inputnorm>>, <<HistCross>>, or <<GeneralCrossWalk>> sheet before browsing for a source file.", vbExclamation, "Geocode Tool"
         Exit Sub
     End If
 
@@ -291,6 +315,23 @@ Public Function GCT_RefreshHistCrossGather(ByVal outputFolder As String, ByVal s
     GCT_RefreshHistCrossGather = "HistCross header mapping refreshed on " & sheetName & "."
 End Function
 
+Public Function GCT_RefreshGeneralCrossWalkGather(ByVal outputFolder As String, ByVal sheetName As String) As String
+    Dim ws As Worksheet
+    Dim inputPath As String
+    Dim configPath As String
+
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    inputPath = GCT_OutputPath(outputFolder, "generalcrosswalk", "generalcrosswalk_input_preview.csv")
+    configPath = GCT_OutputPath(outputFolder, "generalcrosswalk", "generalcrosswalk_config.csv")
+
+    GCT_ClearRange ws, "N14", 29
+    GCT_ClearRange ws, "B26", 4
+    GCT_LoadCsvToRange inputPath, ws.Range("N14")
+    GCT_LoadCsvToRange configPath, ws.Range("B26")
+
+    GCT_RefreshGeneralCrossWalkGather = "GeneralCrossWalk input and configuration refreshed on " & sheetName & "."
+End Function
+
 Public Function GCT_RefreshInputNormUpdate(ByVal outputFolder As String, ByVal sheetName As String) As String
     Dim ws As Worksheet
     Dim previewPath As String
@@ -321,13 +362,30 @@ Public Function GCT_RefreshHistCrossUpdate(ByVal outputFolder As String, ByVal s
     GCT_RefreshHistCrossUpdate = "HistCross matched and unmatched previews refreshed on " & sheetName & "."
 End Function
 
+Public Function GCT_RefreshGeneralCrossWalkUpdate(ByVal outputFolder As String, ByVal sheetName As String) As String
+    Dim ws As Worksheet
+    Dim mappedPath As String
+    Dim reviewPath As String
+
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    mappedPath = GCT_OutputPath(outputFolder, "generalcrosswalk", "generalcrosswalk_final_mapped.csv")
+    reviewPath = GCT_OutputPath(outputFolder, "generalcrosswalk", "generalcrosswalk_manual_review.csv")
+
+    GCT_ClearRange ws, "AQ14", 54
+    GCT_ClearRange ws, "CS14", 40
+    GCT_LoadCsvToRange mappedPath, ws.Range("AQ14")
+    GCT_LoadCsvToRange reviewPath, ws.Range("CS14")
+
+    GCT_RefreshGeneralCrossWalkUpdate = "GeneralCrossWalk mapped output and review queue refreshed on " & sheetName & "."
+End Function
+
 Private Function GCT_DispatchTool(ByVal action As String, Optional ByVal outputDir As String = "") As Variant
     If Len(ThisWorkbook.Path) = 0 Then
         Err.Raise vbObjectError + 5305, GCT_SOURCE, "Please save the workbook before running a Geocode tool action."
     End If
 
     If Not GCT_IsSupportedSheet(ActiveSheet) Then
-        Err.Raise vbObjectError + 5306, GCT_SOURCE, "Open an <<inputnorm>> or <<HistCross>> sheet before running this action."
+        Err.Raise vbObjectError + 5306, GCT_SOURCE, "Open an <<inputnorm>>, <<HistCross>>, or <<GeneralCrossWalk>> sheet before running this action."
     End If
 
     ThisWorkbook.Save
@@ -370,6 +428,9 @@ Private Sub GCT_HandleResult(ByVal action As String, ByVal result As Variant)
         ElseIf actionPrefix = "histcross" And InStr(1, resultText, "HistCross gather completed.", vbTextCompare) > 0 Then
             resultText = resultText & vbCrLf & vbCrLf & GCT_RefreshHistCrossGather(outputFolder, ActiveSheet.Name)
             ThisWorkbook.Save
+        ElseIf actionPrefix = "generalcrosswalk" And InStr(1, resultText, "GeneralCrossWalk gather completed.", vbTextCompare) > 0 Then
+            resultText = resultText & vbCrLf & vbCrLf & GCT_RefreshGeneralCrossWalkGather(outputFolder, ActiveSheet.Name)
+            ThisWorkbook.Save
         End If
     End If
 
@@ -379,6 +440,9 @@ Private Sub GCT_HandleResult(ByVal action As String, ByVal result As Variant)
             ThisWorkbook.Save
         ElseIf actionPrefix = "histcross" And InStr(1, resultText, "HistCross update completed.", vbTextCompare) > 0 Then
             resultText = resultText & vbCrLf & vbCrLf & GCT_RefreshHistCrossUpdate(outputFolder, ActiveSheet.Name)
+            ThisWorkbook.Save
+        ElseIf actionPrefix = "generalcrosswalk" And InStr(1, resultText, "GeneralCrossWalk update completed.", vbTextCompare) > 0 Then
+            resultText = resultText & vbCrLf & vbCrLf & GCT_RefreshGeneralCrossWalkUpdate(outputFolder, ActiveSheet.Name)
             ThisWorkbook.Save
         End If
     End If

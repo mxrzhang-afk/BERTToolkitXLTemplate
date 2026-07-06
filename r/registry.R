@@ -76,7 +76,10 @@ toolkit_registry <- function() {
         inputnorm_build = goecode_tool_inputnorm_build,
         histcross_gather = goecode_tool_histcross_gather,
         histcross_update = goecode_tool_histcross_update,
-        histcross_build = goecode_tool_histcross_build
+        histcross_build = goecode_tool_histcross_build,
+        generalcrosswalk_gather = goecode_tool_generalcrosswalk_gather,
+        generalcrosswalk_update = goecode_tool_generalcrosswalk_update,
+        generalcrosswalk_build = goecode_tool_generalcrosswalk_build
       ),
       run = goecode_tool_inputnorm_update,
       validate = goecode_tool_validate,

@@ -8,7 +8,7 @@ goecode_tool_validate <- function(workbook_path, context = list()) {
 
   active_sheet <- goecode_tool_active_sheet(context, sheets)
   marker <- goecode_tool_cell(workbook_path, active_sheet, row = 1, col = 1)
-  if (!goecode_tool_marker_key(marker) %in% c("inputnorm", "histcross")) {
+  if (!goecode_tool_marker_key(marker) %in% c("inputnorm", "histcross", "generalcrosswalk")) {
     stop(sprintf("Active sheet '%s' is not a supported Geocode tab.", active_sheet), call. = FALSE)
   }
 
@@ -340,6 +340,139 @@ goecode_tool_histcross_build <- function(workbook_path, output_dir = NULL, conte
   )
 }
 
+goecode_tool_generalcrosswalk_gather <- function(workbook_path, output_dir = NULL, context = list()) {
+  ctx <- goecode_tool_context(workbook_path, output_dir, context)
+  input <- goecode_tool_generalcrosswalk_input(ctx)
+  input <- goecode_tool_ensure_entry_index(input)
+
+  config <- goecode_tool_generalcrosswalk_existing_config(ctx$workbook_path, ctx$active_sheet)
+  config <- goecode_tool_generalcrosswalk_default_config(names(input), config)
+
+  general_dir <- file.path(ctx$output_dir, "generalcrosswalk")
+  dir.create(general_dir, recursive = TRUE, showWarnings = FALSE)
+  input_file <- file.path(general_dir, "generalcrosswalk_input.csv")
+  input_preview_file <- file.path(general_dir, "generalcrosswalk_input_preview.csv")
+  config_file <- file.path(general_dir, "generalcrosswalk_config.csv")
+  summary_file <- file.path(general_dir, "generalcrosswalk_gather_summary.csv")
+
+  goecode_tool_write_csv(input, input_file)
+  goecode_tool_write_csv(input, input_preview_file)
+  goecode_tool_write_csv(config, config_file)
+
+  summary <- data.frame(
+    Metric = c("Input source", "Rows", "Columns", "Input artifact", "Config artifact"),
+    Value = c(attr(input, "source_label"), nrow(input), ncol(input), input_file, config_file),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  goecode_tool_write_csv(summary, summary_file)
+
+  paste(
+    "GeneralCrossWalk gather completed.",
+    sprintf("Output folder: %s", ctx$output_dir),
+    sprintf("Input source: %s", attr(input, "source_label")),
+    sprintf("Rows staged: %s", nrow(input)),
+    sprintf("Columns staged: %s", ncol(input)),
+    sprintf("Header config: %s", config_file),
+    sep = vb_newline()
+  )
+}
+
+goecode_tool_generalcrosswalk_update <- function(workbook_path, output_dir = NULL, context = list()) {
+  ctx <- goecode_tool_context(workbook_path, output_dir, context)
+  general_dir <- file.path(ctx$output_dir, "generalcrosswalk")
+  dir.create(general_dir, recursive = TRUE, showWarnings = FALSE)
+
+  input_file <- file.path(general_dir, "generalcrosswalk_input.csv")
+  input <- if (file.exists(input_file)) {
+    goecode_tool_read_source_table(input_file)
+  } else {
+    goecode_tool_generalcrosswalk_input(ctx)
+  }
+  input <- goecode_tool_ensure_entry_index(input)
+
+  config <- goecode_tool_generalcrosswalk_read_config(ctx$workbook_path, ctx$active_sheet)
+  selected_config <- goecode_tool_generalcrosswalk_selected_config(config, input)
+  target_resolution <- goecode_tool_generalcrosswalk_target_resolution(ctx$workbook_path, ctx$active_sheet)
+  threshold <- goecode_tool_generalcrosswalk_review_threshold(ctx$workbook_path, ctx$active_sheet)
+  geo <- goecode_tool_generalcrosswalk_geo_index(ctx$workbook_path)
+  zones <- goecode_tool_generalcrosswalk_zone_index(ctx$workbook_path, geo)
+
+  ppc <- goecode_tool_generalcrosswalk_ppc_candidates(input, selected_config, geo, zones)
+  address <- goecode_tool_generalcrosswalk_text_candidates(input, selected_config, geo, zones, "Address")
+  insured <- goecode_tool_generalcrosswalk_text_candidates(input, selected_config, geo, zones, "Insured")
+  promoted <- goecode_tool_generalcrosswalk_promote(input, selected_config, ppc, address, insured, target_resolution, threshold)
+
+  config_file <- file.path(general_dir, "generalcrosswalk_config.csv")
+  ppc_file <- file.path(general_dir, "generalcrosswalk_ppc_candidates.csv")
+  address_file <- file.path(general_dir, "generalcrosswalk_address_candidates.csv")
+  insured_file <- file.path(general_dir, "generalcrosswalk_insured_candidates.csv")
+  final_file <- file.path(general_dir, "generalcrosswalk_final_mapped.csv")
+  review_file <- file.path(general_dir, "generalcrosswalk_manual_review.csv")
+  warnings_file <- file.path(general_dir, "generalcrosswalk_warnings.csv")
+  summary_file <- file.path(general_dir, "generalcrosswalk_update_summary.csv")
+  mapped_output <- goecode_tool_generalcrosswalk_mapped_output(input, promoted$mapped)
+
+  goecode_tool_write_csv(input, input_file)
+  goecode_tool_write_csv(config, config_file)
+  goecode_tool_write_csv(ppc, ppc_file)
+  goecode_tool_write_csv(address, address_file)
+  goecode_tool_write_csv(insured, insured_file)
+  goecode_tool_write_csv(mapped_output, final_file)
+  goecode_tool_write_csv(promoted$review, review_file)
+  goecode_tool_write_csv(promoted$warnings, warnings_file)
+
+  summary <- data.frame(
+    Metric = c(
+      "Input rows",
+      "Selected config rows",
+      "Target resolution",
+      "Review threshold",
+      "PPC candidates",
+      "Address candidates",
+      "Insured candidates",
+      "Mapped rows",
+      "Manual review rows",
+      "Warnings"
+    ),
+    Value = c(
+      nrow(input),
+      nrow(selected_config),
+      target_resolution,
+      threshold,
+      sum(nzchar(ppc$candidate_status)),
+      sum(nzchar(address$candidate_status)),
+      sum(nzchar(insured$candidate_status)),
+      nrow(promoted$mapped),
+      nrow(promoted$review),
+      nrow(promoted$warnings)
+    ),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  goecode_tool_write_csv(summary, summary_file)
+
+  paste(
+    "GeneralCrossWalk update completed.",
+    sprintf("Output folder: %s", ctx$output_dir),
+    sprintf("Rows processed: %s", nrow(input)),
+    sprintf("Mapped rows: %s", nrow(promoted$mapped)),
+    sprintf("Manual review rows: %s", nrow(promoted$review)),
+    sprintf("Review threshold: %s", threshold),
+    sep = vb_newline()
+  )
+}
+
+goecode_tool_generalcrosswalk_build <- function(workbook_path, output_dir = NULL, context = list()) {
+  ctx <- goecode_tool_context(workbook_path, output_dir, context)
+  paste(
+    "GeneralCrossWalk build is reserved for later export workflow steps.",
+    sprintf("Output folder: %s", ctx$output_dir),
+    "Current contract: Gather stages input; Update creates mapped output and manual review queue.",
+    sep = vb_newline()
+  )
+}
+
 goecode_tool_run <- goecode_tool_inputnorm_update
 
 goecode_tool_context <- function(workbook_path, output_dir = NULL, context = list()) {
@@ -366,7 +499,7 @@ goecode_tool_active_sheet <- function(context, sheets) {
 
   action_sheets <- vapply(sheets, function(sheet) {
     marker <- tryCatch(goecode_tool_cell(context$workbook_path, sheet, row = 1, col = 1), error = function(e) "")
-    goecode_tool_marker_key(marker) %in% c("inputnorm", "histcross")
+    goecode_tool_marker_key(marker) %in% c("inputnorm", "histcross", "generalcrosswalk")
   }, logical(1))
 
   matches <- sheets[action_sheets]
@@ -566,14 +699,17 @@ goecode_tool_shared_strings <- function(shared_xml) {
   shared <- character()
   if (length(shared_xml) > 0 && file.exists(shared_xml[1])) {
     shared_text <- paste(readLines(shared_xml[1], warn = FALSE), collapse = "")
-    shared_items <- regmatches(shared_text, gregexpr("<si>.*?</si>", shared_text, perl = TRUE))[[1]]
-    if (!identical(shared_items[1], -1L)) {
-      shared <- vapply(shared_items, function(item) {
+    parts <- strsplit(shared_text, "<si>", fixed = TRUE, useBytes = TRUE)[[1]]
+    if (length(parts) > 1L) {
+      parts <- parts[-1L]
+      shared <- vapply(parts, function(item) {
+      close <- regexpr("</si>", item, fixed = TRUE)[[1]]
+        if (close > 0L) item <- substr(item, 1L, close - 1L)
         item <- gsub("<phoneticPr[^>]*/>", "", item)
         item <- gsub("<rPr>.*?</rPr>", "", item, perl = TRUE)
         text <- gsub("<[^>]+>", "", item)
         goecode_tool_xml_unescape(text)
-      }, character(1))
+      }, character(1), USE.NAMES = FALSE)
     }
   }
   shared
@@ -649,13 +785,19 @@ goecode_tool_extract_cell_tags <- function(sheet_text) {
   }
 
   parts <- parts[-1L]
-  cells <- character()
-  for (part in parts) {
+  cells <- vector("list", length(parts))
+  used <- 0L
+  for (idx in seq_along(parts)) {
+    part <- parts[[idx]]
     close_cell <- regexpr("</c>", part, fixed = TRUE, useBytes = TRUE)[[1]]
     if (close_cell < 0L) next
-    cells <- c(cells, paste0("<c", substr(part, 1L, close_cell + 3L)))
+    used <- used + 1L
+    cells[[used]] <- paste0("<c", substr(part, 1L, close_cell + 3L))
   }
-  cells
+  if (used == 0L) {
+    return(character())
+  }
+  unlist(cells[seq_len(used)], use.names = FALSE)
 }
 
 goecode_tool_sheet_cell_value <- function(sheet, ref) {
@@ -1345,4 +1487,888 @@ goecode_tool_histcross_duplicate_warnings <- function(prior, prior_rows, prior_k
     )
   })
   do.call(rbind, rows)
+}
+
+goecode_tool_read_workbook_table_range <- function(workbook_path, sheet_name, header_ref, max_cols = 200L, max_data_rows = NULL) {
+  temp_dir <- tempfile("goecode_tool_range_")
+  dir.create(temp_dir, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(temp_dir, recursive = TRUE, force = TRUE), add = TRUE)
+
+  workbook_xml <- utils::unzip(workbook_path, files = "xl/workbook.xml", exdir = temp_dir)
+  workbook_rels <- utils::unzip(workbook_path, files = "xl/_rels/workbook.xml.rels", exdir = temp_dir)
+  shared_xml <- suppressWarnings(utils::unzip(workbook_path, files = "xl/sharedStrings.xml", exdir = temp_dir))
+  workbook <- paste(readLines(workbook_xml[1], warn = FALSE), collapse = "")
+  rels <- paste(readLines(workbook_rels[1], warn = FALSE), collapse = "")
+  sheet_file <- goecode_tool_sheet_file(workbook, rels, sheet_name)
+  sheet_xml <- utils::unzip(workbook_path, files = sheet_file, exdir = temp_dir)
+  sheet_text <- paste(readLines(sheet_xml[1], warn = FALSE), collapse = "")
+  shared <- goecode_tool_shared_strings(shared_xml)
+
+  header_col <- goecode_tool_ref_col(header_ref)
+  header_row <- goecode_tool_ref_row(header_ref)
+  max_col <- header_col + max_cols - 1L
+  cells <- new.env(parent = emptyenv())
+  row_parts <- strsplit(sheet_text, "<row", fixed = TRUE, useBytes = FALSE)[[1]]
+  if (length(row_parts) > 1L) {
+    for (row_part in row_parts[-1L]) {
+      row_end <- regexpr("</row>", row_part, fixed = TRUE, useBytes = FALSE)[[1]]
+      if (row_end < 0L) next
+      row_text <- substr(row_part, 1L, row_end + 5L)
+      row_ref <- sub('.*\\br="([0-9]+)".*', "\\1", substr(row_text, 1L, min(nchar(row_text), 200L)))
+      row_num <- suppressWarnings(as.integer(row_ref))
+      if (is.na(row_num) || row_num < header_row) next
+      if (!is.null(max_data_rows) && row_num > header_row + max_data_rows + 20L) break
+
+      cell_parts <- strsplit(row_text, "<c", fixed = TRUE, useBytes = FALSE)[[1]]
+      if (length(cell_parts) <= 1L) next
+      for (cell_part in cell_parts[-1L]) {
+        close_cell <- regexpr("</c>", cell_part, fixed = TRUE, useBytes = FALSE)[[1]]
+        if (close_cell < 0L) next
+        cell <- paste0("<c", substr(cell_part, 1L, close_cell + 3L))
+        ref <- sub('.*\\br="([^"]+)".*', "\\1", substr(cell, 1L, min(nchar(cell), 120L)))
+        col <- goecode_tool_ref_col(ref)
+        row <- goecode_tool_ref_row(ref)
+        if (is.na(row) || is.na(col) || col < header_col || col > max_col || row < header_row) next
+        cells[[ref]] <- goecode_tool_cell_tag_value(cell, shared)
+      }
+    }
+  }
+
+  headers <- character()
+  for (col in header_col:max_col) {
+    value <- trimws(as.character(cells[[paste0(goecode_tool_col_name(col), header_row)]] %||% ""))
+    if (!nzchar(value)) {
+      if (length(headers) > 0) break
+      next
+    }
+    headers <- c(headers, value)
+  }
+  if (length(headers) == 0) {
+    stop(sprintf("No table headers found on sheet '%s' at %s.", sheet_name, header_ref), call. = FALSE)
+  }
+  headers <- make.unique(headers)
+
+  rows <- list()
+  blank_run <- 0L
+  current_row <- header_row + 1L
+  repeat {
+    values <- vapply(seq_along(headers), function(i) {
+      ref <- paste0(goecode_tool_col_name(header_col + i - 1L), current_row)
+      as.character(cells[[ref]] %||% "")
+    }, character(1))
+    if (!any(nzchar(trimws(values)))) {
+      blank_run <- blank_run + 1L
+      if (blank_run >= 20L) break
+    } else {
+      blank_run <- 0L
+      names(values) <- headers
+      rows[[length(rows) + 1L]] <- as.data.frame(as.list(values), stringsAsFactors = FALSE, check.names = FALSE)
+    }
+    current_row <- current_row + 1L
+    if (current_row > 1048576L) break
+  }
+
+  if (length(rows) == 0) {
+    return(as.data.frame(setNames(replicate(length(headers), character(), simplify = FALSE), headers), stringsAsFactors = FALSE, check.names = FALSE))
+  }
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+`%||%` <- function(x, y) {
+  if (is.null(x)) y else x
+}
+
+goecode_tool_generalcrosswalk_input <- function(ctx) {
+  source_path <- goecode_tool_cell(ctx$workbook_path, ctx$active_sheet, row = 14, col = 3)
+  if (nzchar(source_path) && file.exists(source_path)) {
+    input <- goecode_tool_read_source_table(source_path)
+    attr(input, "source_label") <- source_path
+    return(input)
+  }
+
+  input <- goecode_tool_read_workbook_table_range(ctx$workbook_path, ctx$active_sheet, "N14", max_cols = 29L)
+  attr(input, "source_label") <- sprintf("%s!N14", ctx$active_sheet)
+  input
+}
+
+goecode_tool_ensure_entry_index <- function(data) {
+  data <- as.data.frame(data, stringsAsFactors = FALSE, check.names = FALSE)
+  data[] <- lapply(data, function(col) {
+    col <- as.character(col)
+    col[is.na(col)] <- ""
+    Encoding(col) <- "UTF-8"
+    col
+  })
+  if (!"Entry_Index" %in% names(data)) {
+    data <- data.frame(Entry_Index = seq_len(nrow(data)), data, stringsAsFactors = FALSE, check.names = FALSE)
+  }
+  data
+}
+
+goecode_tool_generalcrosswalk_existing_config <- function(workbook_path, sheet) {
+  config <- goecode_tool_read_workbook_table_range(workbook_path, sheet, "B26", max_cols = 4L, max_data_rows = 500L)
+  config <- config[!(tolower(config$header_raw) == "header_raw"), , drop = FALSE]
+  config <- config[nzchar(config$header_raw), , drop = FALSE]
+  names(config) <- c("header_raw", "Use", "Index Used", "Scoring Priority")
+  rownames(config) <- NULL
+  config
+}
+
+goecode_tool_generalcrosswalk_default_config <- function(headers, existing = NULL) {
+  rows <- lapply(headers, function(header) {
+    old <- NULL
+    if (!is.null(existing) && nrow(existing) > 0) {
+      idx <- match(header, existing$header_raw)
+      if (!is.na(idx)) old <- existing[idx, , drop = FALSE]
+    }
+    guess <- goecode_tool_generalcrosswalk_guess_index(header)
+    use <- if (guess %in% c("Province", "Prefecture", "County", "Address", "Insured")) "Y" else "N"
+    data.frame(
+      header_raw = header,
+      Use = if (!is.null(old) && nzchar(old$Use)) old$Use else use,
+      `Index Used` = if (!is.null(old) && nzchar(old$`Index Used`)) old$`Index Used` else guess,
+      `Scoring Priority` = if (!is.null(old) && nzchar(old$`Scoring Priority`)) old$`Scoring Priority` else goecode_tool_generalcrosswalk_default_priority(guess),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  })
+  do.call(rbind, rows)
+}
+
+goecode_tool_generalcrosswalk_guess_index <- function(header) {
+  key <- goecode_tool_normalize_header(header)
+  if (grepl("province", key)) return("Province")
+  if (grepl("prefecture|city", key)) return("Prefecture")
+  if (grepl("county|district", key)) return("County")
+  if (grepl("address", key)) return("Address")
+  if (grepl("insured", key)) return("Insured")
+  if (grepl("branch.*name", key)) return("Branch_Name")
+  if (grepl("postal|postcode|zip", key)) return("Postal")
+  if (grepl("branch.*code", key)) return("Branch_Code")
+  ""
+}
+
+goecode_tool_generalcrosswalk_default_priority <- function(index_used) {
+  switch(
+    index_used,
+    Province = "1",
+    Prefecture = "1",
+    County = "1",
+    Address = "2",
+    Insured = "3",
+    ""
+  )
+}
+
+goecode_tool_generalcrosswalk_read_config <- function(workbook_path, sheet) {
+  config <- goecode_tool_generalcrosswalk_existing_config(workbook_path, sheet)
+  if (nrow(config) == 0) {
+    stop("GeneralCrossWalk configuration is missing in B26:E. Run Gather first, then configure the rows.", call. = FALSE)
+  }
+  config
+}
+
+goecode_tool_generalcrosswalk_selected_config <- function(config, input) {
+  config$Use <- toupper(trimws(config$Use))
+  config$`Index Used` <- vapply(config$`Index Used`, goecode_tool_generalcrosswalk_index_label, character(1))
+  config$priority <- suppressWarnings(as.numeric(config$`Scoring Priority`))
+  config$priority[is.na(config$priority)] <- 99
+  selected <- config[config$Use %in% c("Y", "YES", "TRUE", "1"), , drop = FALSE]
+  selected <- selected[nzchar(selected$header_raw) & nzchar(selected$`Index Used`), , drop = FALSE]
+  selected <- selected[selected$`Index Used` %in% c("Province", "Prefecture", "County", "Address", "Insured"), , drop = FALSE]
+  missing <- setdiff(selected$header_raw, names(input))
+  if (length(missing) > 0) {
+    stop(sprintf("GeneralCrossWalk selected header(s) are missing from input: %s", paste(missing, collapse = ", ")), call. = FALSE)
+  }
+  if (nrow(selected) == 0) {
+    stop("GeneralCrossWalk requires at least one v1 config row marked Use=Y for Province, Prefecture, County, Address, or Insured.", call. = FALSE)
+  }
+  rownames(selected) <- NULL
+  selected
+}
+
+goecode_tool_generalcrosswalk_index_label <- function(value) {
+  key <- goecode_tool_normalize_header(value)
+  if (key %in% c("province", "prov")) return("Province")
+  if (key %in% c("prefecture", "city")) return("Prefecture")
+  if (key %in% c("county", "district")) return("County")
+  if (key %in% c("address", "addr")) return("Address")
+  if (key %in% c("insured", "insured name")) return("Insured")
+  if (key %in% c("branch name", "branch")) return("Branch_Name")
+  if (key %in% c("postal", "postcode", "zip")) return("Postal")
+  if (key %in% c("branch code")) return("Branch_Code")
+  trimws(as.character(value))
+}
+
+goecode_tool_generalcrosswalk_target_resolution <- function(workbook_path, sheet) {
+  value <- goecode_tool_generalcrosswalk_index_label(goecode_tool_cell(workbook_path, sheet, row = 42, col = 3))
+  if (!value %in% c("Province", "Prefecture", "County")) {
+    value <- "County"
+  }
+  value
+}
+
+goecode_tool_generalcrosswalk_review_threshold <- function(workbook_path, sheet) {
+  value <- suppressWarnings(as.numeric(goecode_tool_cell(workbook_path, sheet, row = 43, col = 3)))
+  if (is.na(value)) 70 else value
+}
+
+goecode_tool_generalcrosswalk_geo_index <- function(workbook_path) {
+  geo <- goecode_tool_read_workbook_table_range(workbook_path, "Control", "O1", max_cols = 7L, max_data_rows = 5000L)
+  required <- c("Postal", "province_name", "prefecture_name", "county_name", "province_short", "prefecture_short", "county_short")
+  missing <- setdiff(required, names(geo))
+  if (length(missing) > 0) {
+    stop(sprintf("Control!O:U is missing required column(s): %s", paste(missing, collapse = ", ")), call. = FALSE)
+  }
+  geo <- geo[, required, drop = FALSE]
+  geo$geo_row_id <- seq_len(nrow(geo))
+  geo
+}
+
+goecode_tool_generalcrosswalk_zone_index <- function(workbook_path, geo) {
+  zones <- goecode_tool_read_workbook_table_range(workbook_path, "Control", "AD1", max_cols = 4L, max_data_rows = 1000L)
+  required <- c("zone_name", "province_name", "prefecture_name", "county_name")
+  missing <- setdiff(required, names(zones))
+  if (length(missing) > 0) {
+    return(as.data.frame(setNames(replicate(length(c(required, "zone_status")), character(), simplify = FALSE), c(required, "zone_status")), stringsAsFactors = FALSE))
+  }
+  zones <- zones[, required, drop = FALSE]
+  zones <- zones[nzchar(trimws(zones$zone_name)), , drop = FALSE]
+  if (nrow(zones) == 0) {
+    zones$zone_status <- character()
+    return(zones)
+  }
+  key <- paste(geo$province_name, geo$prefecture_name, geo$county_name, sep = "\r")
+  zone_key <- paste(zones$province_name, zones$prefecture_name, zones$county_name, sep = "\r")
+  zones$zone_status <- ifelse(zone_key %in% key, "valid", "invalid_hierarchy")
+  zones
+}
+
+goecode_tool_generalcrosswalk_ppc_candidates <- function(input, config, geo, zones) {
+  ppc_config <- config[config$`Index Used` %in% c("Province", "Prefecture", "County"), , drop = FALSE]
+  if (nrow(ppc_config) == 0) {
+    rows <- lapply(input$Entry_Index, function(id) goecode_tool_generalcrosswalk_empty_candidate(id, "ppc"))
+    return(goecode_tool_generalcrosswalk_candidate_frame(rows))
+  }
+
+  lookups <- list(
+    Province = goecode_tool_generalcrosswalk_exact_lookup(geo, c("province_name", "province_short"), "geo_row_id"),
+    Prefecture = goecode_tool_generalcrosswalk_exact_lookup(geo, c("prefecture_name", "prefecture_short"), "geo_row_id"),
+    County = goecode_tool_generalcrosswalk_exact_lookup(geo, c("county_name", "county_short"), "geo_row_id"),
+    Zone = goecode_tool_generalcrosswalk_exact_lookup(zones, "zone_name")
+  )
+
+  rows <- lapply(seq_len(nrow(input)), function(i) {
+    goecode_tool_generalcrosswalk_ppc_row(input[i, , drop = FALSE], ppc_config, geo, zones, lookups)
+  })
+  goecode_tool_generalcrosswalk_candidate_frame(rows)
+}
+
+goecode_tool_generalcrosswalk_ppc_row <- function(row, ppc_config, geo, zones, lookups) {
+  values <- split(ppc_config, ppc_config$`Index Used`)
+  raw_values <- lapply(values, function(cfg) {
+    vals <- unlist(row[, cfg$header_raw, drop = FALSE], use.names = FALSE)
+    vals <- vals[goecode_tool_generalcrosswalk_has_value(vals)]
+    unique(as.character(vals))
+  })
+
+  zone_hits <- character()
+  if (!is.null(raw_values$County) && nrow(zones) > 0) {
+    zone_hits <- goecode_tool_generalcrosswalk_lookup_ids(raw_values$County, lookups$Zone)
+  }
+  zone_hits <- unique(zone_hits)
+  if (length(zone_hits) > 0) {
+    return(goecode_tool_generalcrosswalk_zone_candidate(row$Entry_Index, "ppc", zones[zone_hits, , drop = FALSE], min(ppc_config$priority), "ppc_zone_match"))
+  }
+
+  if (sum(vapply(raw_values, length, integer(1))) == 0L) {
+    return(goecode_tool_generalcrosswalk_empty_candidate(row$Entry_Index, "ppc"))
+  }
+
+  candidate_ids <- NULL
+  evidence <- character()
+  conflict <- character()
+  for (kind in c("Province", "Prefecture", "County")) {
+    vals <- raw_values[[kind]]
+    if (is.null(vals) || length(vals) == 0) next
+    ids <- goecode_tool_generalcrosswalk_lookup_ids(vals, lookups[[kind]])
+    evidence <- c(evidence, sprintf("%s=%s", kind, paste(vals, collapse = "|")))
+    if (length(ids) == 0) {
+      conflict <- c(conflict, sprintf("No %s exact match for %s", kind, paste(vals, collapse = "|")))
+      next
+    }
+    candidate_ids <- if (is.null(candidate_ids)) ids else intersect(candidate_ids, ids)
+  }
+
+  if (is.null(candidate_ids) || length(candidate_ids) == 0) {
+    return(goecode_tool_generalcrosswalk_empty_candidate(row$Entry_Index, "ppc", "ppc_conflict", paste(conflict, collapse = "; ")))
+  }
+
+  cand <- geo[geo$geo_row_id %in% candidate_ids, , drop = FALSE]
+  resolved <- goecode_tool_generalcrosswalk_resolve_geo(cand, raw_values)
+  goecode_tool_generalcrosswalk_candidate(
+    entry_index = row$Entry_Index,
+    method = "ppc",
+    province = resolved$province,
+    prefecture = resolved$prefecture,
+    county = resolved$county,
+    level = resolved$level,
+    status = resolved$status,
+    priority = min(ppc_config$priority),
+    confidence = goecode_tool_generalcrosswalk_base_confidence("ppc", resolved$level, FALSE),
+    terms = paste(evidence, collapse = "; "),
+    detail = resolved$detail,
+    count = nrow(cand),
+    source = paste(ppc_config$header_raw, collapse = ", ")
+  )
+}
+
+goecode_tool_generalcrosswalk_exact_lookup <- function(table, fields, id_col = NULL) {
+  if (nrow(table) == 0) return(list())
+  row_ids <- if (!is.null(id_col) && id_col %in% names(table)) table[[id_col]] else seq_len(nrow(table))
+  term_values <- character()
+  term_ids <- integer()
+  for (field in fields) {
+    if (!field %in% names(table)) next
+    values <- goecode_tool_generalcrosswalk_norm(table[[field]])
+    keep <- nzchar(values)
+    term_values <- c(term_values, values[keep])
+    term_ids <- c(term_ids, row_ids[keep])
+  }
+  if (length(term_values) == 0) return(list())
+  lapply(split(term_ids, term_values), unique)
+}
+
+goecode_tool_generalcrosswalk_lookup_ids <- function(values, lookup) {
+  if (length(values) == 0 || length(lookup) == 0) return(integer())
+  keys <- goecode_tool_generalcrosswalk_norm(values)
+  keys <- keys[nzchar(keys)]
+  if (length(keys) == 0) return(integer())
+  unique(unlist(lookup[keys], use.names = FALSE))
+}
+
+goecode_tool_generalcrosswalk_text_candidates <- function(input, config, geo, zones, index_used) {
+  text_config <- config[config$`Index Used` == index_used, , drop = FALSE]
+  method <- tolower(index_used)
+  if (nrow(text_config) == 0) {
+    rows <- lapply(input$Entry_Index, function(id) goecode_tool_generalcrosswalk_empty_candidate(id, method))
+    return(goecode_tool_generalcrosswalk_candidate_frame(rows))
+  }
+
+  row_texts <- vapply(seq_len(nrow(input)), function(i) {
+    texts <- unlist(input[i, text_config$header_raw, drop = FALSE], use.names = FALSE)
+    texts <- texts[goecode_tool_generalcrosswalk_has_value(texts)]
+    paste(texts, collapse = " ")
+  }, character(1))
+
+  text_norms <- goecode_tool_generalcrosswalk_norm(row_texts)
+  zone_hits <- goecode_tool_generalcrosswalk_row_hits(text_norms, zones, "zone_name")
+  county_hits <- goecode_tool_generalcrosswalk_row_hits(text_norms, geo, c("county_name", "county_short"), "geo_row_id")
+  prefecture_hits <- goecode_tool_generalcrosswalk_row_hits(text_norms, geo, c("prefecture_name", "prefecture_short"), "geo_row_id")
+  province_hits <- goecode_tool_generalcrosswalk_row_hits(text_norms, geo, c("province_name", "province_short"), "geo_row_id")
+  source_columns <- paste(text_config$header_raw, collapse = ", ")
+  priority <- min(text_config$priority)
+
+  rows <- lapply(seq_len(nrow(input)), function(i) {
+    text <- row_texts[[i]]
+    if (!goecode_tool_generalcrosswalk_has_value(text)) {
+      return(goecode_tool_generalcrosswalk_empty_candidate(input$Entry_Index[[i]], method))
+    }
+
+    if (length(zone_hits[[i]]) > 0) {
+      hits <- zones[zone_hits[[i]], , drop = FALSE]
+      return(goecode_tool_generalcrosswalk_zone_candidate(input$Entry_Index[[i]], method, hits, priority, paste0(method, "_zone_match")))
+    }
+
+    if (length(county_hits[[i]]) > 0) {
+      cand <- geo[geo$geo_row_id %in% county_hits[[i]], , drop = FALSE]
+      if (length(province_hits[[i]]) > 0) {
+        narrowed <- cand[cand$geo_row_id %in% province_hits[[i]], , drop = FALSE]
+        if (nrow(narrowed) > 0) cand <- narrowed
+      }
+      if (length(prefecture_hits[[i]]) > 0) {
+        narrowed <- cand[cand$geo_row_id %in% prefecture_hits[[i]], , drop = FALSE]
+        if (nrow(narrowed) > 0) cand <- narrowed
+      }
+      return(goecode_tool_generalcrosswalk_geo_text_candidate(input$Entry_Index[[i]], method, cand, priority, "county", text, source_columns))
+    }
+
+    if (length(prefecture_hits[[i]]) > 0) {
+      cand <- geo[geo$geo_row_id %in% prefecture_hits[[i]], , drop = FALSE]
+      return(goecode_tool_generalcrosswalk_geo_text_candidate(input$Entry_Index[[i]], method, cand, priority, "prefecture", text, source_columns))
+    }
+
+    if (length(province_hits[[i]]) > 0) {
+      cand <- geo[geo$geo_row_id %in% province_hits[[i]], , drop = FALSE]
+      return(goecode_tool_generalcrosswalk_geo_text_candidate(input$Entry_Index[[i]], method, cand, priority, "province", text, source_columns))
+    }
+
+    goecode_tool_generalcrosswalk_empty_candidate(input$Entry_Index[[i]], method)
+  })
+  goecode_tool_generalcrosswalk_candidate_frame(rows)
+}
+
+goecode_tool_generalcrosswalk_row_hits <- function(text_norms, table, fields, id_col = NULL) {
+  hits <- vector("list", length(text_norms))
+  if (nrow(table) == 0 || length(text_norms) == 0) {
+    return(hits)
+  }
+
+  text_norms <- goecode_tool_utf8_clean(text_norms)
+  row_ids <- if (!is.null(id_col) && id_col %in% names(table)) table[[id_col]] else seq_len(nrow(table))
+  term_values <- character()
+  term_ids <- integer()
+  for (field in fields) {
+    if (!field %in% names(table)) next
+    values <- goecode_tool_generalcrosswalk_norm(table[[field]])
+    keep <- nzchar(values)
+    term_values <- c(term_values, values[keep])
+    term_ids <- c(term_ids, row_ids[keep])
+  }
+  if (length(term_values) == 0) {
+    return(hits)
+  }
+
+  ids_by_term <- split(term_ids, term_values)
+  for (term in names(ids_by_term)) {
+    term <- goecode_tool_utf8_clean(term)
+    if (!nzchar(term)) next
+    matched <- grepl(term, text_norms, fixed = TRUE, useBytes = TRUE)
+    if (!any(matched)) next
+    ids <- unique(ids_by_term[[term]])
+    for (row in which(matched)) {
+      hits[[row]] <- c(hits[[row]], ids)
+    }
+  }
+
+  lapply(hits, unique)
+}
+
+goecode_tool_generalcrosswalk_text_row <- function(entry_index, text, config, geo, zones, method) {
+  if (!goecode_tool_generalcrosswalk_has_value(text)) {
+    return(goecode_tool_generalcrosswalk_empty_candidate(entry_index, method))
+  }
+
+  zone_hits <- goecode_tool_generalcrosswalk_contains_rows(text, zones, "zone_name")
+  if (nrow(zone_hits) > 0) {
+    return(goecode_tool_generalcrosswalk_zone_candidate(entry_index, method, zone_hits, min(config$priority), paste0(method, "_zone_match")))
+  }
+
+  county_hits <- unique(goecode_tool_generalcrosswalk_contains_rows_multi(text, geo, c("county_name", "county_short")))
+  if (length(county_hits) > 0) {
+    narrowed <- goecode_tool_generalcrosswalk_filter_text_geo(text, geo[geo$geo_row_id %in% county_hits, , drop = FALSE])
+    return(goecode_tool_generalcrosswalk_geo_text_candidate(entry_index, method, narrowed, min(config$priority), "county", text, paste(config$header_raw, collapse = ", ")))
+  }
+
+  prefecture_hits <- unique(goecode_tool_generalcrosswalk_contains_rows_multi(text, geo, c("prefecture_name", "prefecture_short")))
+  if (length(prefecture_hits) > 0) {
+    cand <- geo[geo$geo_row_id %in% prefecture_hits, , drop = FALSE]
+    return(goecode_tool_generalcrosswalk_geo_text_candidate(entry_index, method, cand, min(config$priority), "prefecture", text, paste(config$header_raw, collapse = ", ")))
+  }
+
+  province_hits <- unique(goecode_tool_generalcrosswalk_contains_rows_multi(text, geo, c("province_name", "province_short")))
+  if (length(province_hits) > 0) {
+    cand <- geo[geo$geo_row_id %in% province_hits, , drop = FALSE]
+    return(goecode_tool_generalcrosswalk_geo_text_candidate(entry_index, method, cand, min(config$priority), "province", text, paste(config$header_raw, collapse = ", ")))
+  }
+
+  goecode_tool_generalcrosswalk_empty_candidate(entry_index, method)
+}
+
+goecode_tool_generalcrosswalk_filter_text_geo <- function(text, candidates) {
+  province_ids <- goecode_tool_generalcrosswalk_contains_rows_multi(text, candidates, c("province_name", "province_short"))
+  if (length(province_ids) > 0) {
+    candidates <- candidates[candidates$geo_row_id %in% province_ids, , drop = FALSE]
+  }
+  prefecture_ids <- goecode_tool_generalcrosswalk_contains_rows_multi(text, candidates, c("prefecture_name", "prefecture_short"))
+  if (length(prefecture_ids) > 0) {
+    candidates <- candidates[candidates$geo_row_id %in% prefecture_ids, , drop = FALSE]
+  }
+  candidates
+}
+
+goecode_tool_generalcrosswalk_geo_text_candidate <- function(entry_index, method, candidates, priority, requested_level, text, source_columns) {
+  resolved <- goecode_tool_generalcrosswalk_resolve_geo(candidates, list())
+  if (identical(requested_level, "province")) {
+    resolved$prefecture <- ""
+    resolved$county <- ""
+    resolved$level <- "Province"
+  } else if (identical(requested_level, "prefecture")) {
+    resolved$county <- ""
+    resolved$level <- "Prefecture"
+  }
+  confidence <- goecode_tool_generalcrosswalk_base_confidence(method, resolved$level, FALSE)
+  goecode_tool_generalcrosswalk_candidate(
+    entry_index = entry_index,
+    method = method,
+    province = resolved$province,
+    prefecture = resolved$prefecture,
+    county = resolved$county,
+    level = resolved$level,
+    status = paste0(method, "_", tolower(resolved$level), "_candidate"),
+    priority = priority,
+    confidence = confidence,
+    terms = substr(text, 1L, 300L),
+    detail = if (nrow(candidates) > 1) sprintf("%s candidates", nrow(candidates)) else "",
+    count = nrow(candidates),
+    source = source_columns
+  )
+}
+
+goecode_tool_generalcrosswalk_zone_candidate <- function(entry_index, method, hits, priority, status) {
+  unique_keys <- unique(paste(hits$province_name, hits$prefecture_name, hits$county_name, sep = "\r"))
+  if (length(unique_keys) > 1) {
+    return(goecode_tool_generalcrosswalk_candidate(
+      entry_index = entry_index,
+      method = method,
+      province = "",
+      prefecture = "",
+      county = "",
+      level = "",
+      status = paste0(method, "_zone_ambiguous"),
+      priority = priority,
+      confidence = 0,
+      terms = paste(unique(hits$zone_name), collapse = "|"),
+      detail = "Multiple zone names mapped to different hierarchies.",
+      count = nrow(hits),
+      source = ""
+    ))
+  }
+  hit <- hits[1, , drop = FALSE]
+  goecode_tool_generalcrosswalk_candidate(
+    entry_index = entry_index,
+    method = method,
+    province = hit$province_name,
+    prefecture = hit$prefecture_name,
+    county = hit$county_name,
+    level = "County",
+    status = status,
+    priority = priority,
+    confidence = goecode_tool_generalcrosswalk_base_confidence(method, "County", TRUE),
+    terms = paste(unique(hits$zone_name), collapse = "|"),
+    detail = if (any(hits$zone_status != "valid")) "Zone mapping is not found in Control O:U hierarchy." else "",
+    count = nrow(hits),
+    source = "zone_name"
+  )
+}
+
+goecode_tool_generalcrosswalk_geo_exact_ids <- function(values, kind, geo) {
+  fields <- switch(
+    kind,
+    Province = c("province_name", "province_short"),
+    Prefecture = c("prefecture_name", "prefecture_short"),
+    County = c("county_name", "county_short"),
+    character()
+  )
+  value_keys <- goecode_tool_generalcrosswalk_norm(values)
+  matched <- rep(FALSE, nrow(geo))
+  for (field in fields) {
+    matched <- matched | goecode_tool_generalcrosswalk_norm(geo[[field]]) %in% value_keys
+  }
+  geo$geo_row_id[matched]
+}
+
+goecode_tool_generalcrosswalk_contains_rows <- function(text, table, field) {
+  if (nrow(table) == 0 || !field %in% names(table)) {
+    return(table[0, , drop = FALSE])
+  }
+  text_norm <- goecode_tool_generalcrosswalk_norm(text)
+  terms <- goecode_tool_generalcrosswalk_norm(table[[field]])
+  keep <- nzchar(terms) & vapply(terms, function(term) grepl(term, text_norm, fixed = TRUE), logical(1))
+  table[keep, , drop = FALSE]
+}
+
+goecode_tool_generalcrosswalk_contains_rows_multi <- function(text, table, fields) {
+  if (nrow(table) == 0) return(integer())
+  ids <- integer()
+  for (field in fields) {
+    if (!field %in% names(table)) next
+    hits <- goecode_tool_generalcrosswalk_contains_rows(text, table, field)
+    if (nrow(hits) > 0) ids <- c(ids, hits$geo_row_id)
+  }
+  unique(ids)
+}
+
+goecode_tool_generalcrosswalk_resolve_geo <- function(candidates, raw_values) {
+  if (nrow(candidates) == 0) {
+    return(list(province = "", prefecture = "", county = "", level = "", status = "no_candidate", detail = ""))
+  }
+  provinces <- unique(candidates$province_name)
+  prefectures <- unique(paste(candidates$province_name, candidates$prefecture_name, sep = "\r"))
+  counties <- unique(paste(candidates$province_name, candidates$prefecture_name, candidates$county_name, sep = "\r"))
+  if (length(counties) == 1 && (!is.null(raw_values$County) || nrow(candidates) == 1)) {
+    parts <- strsplit(counties[[1]], "\r", fixed = TRUE)[[1]]
+    return(list(province = parts[[1]], prefecture = parts[[2]], county = parts[[3]], level = "County", status = "matched_county", detail = ""))
+  }
+  if (length(prefectures) == 1 && (length(counties) > 1 || !is.null(raw_values$Prefecture))) {
+    parts <- strsplit(prefectures[[1]], "\r", fixed = TRUE)[[1]]
+    return(list(province = parts[[1]], prefecture = parts[[2]], county = "", level = "Prefecture", status = "matched_prefecture", detail = sprintf("%s county candidates", length(counties))))
+  }
+  if (length(provinces) == 1) {
+    return(list(province = provinces[[1]], prefecture = "", county = "", level = "Province", status = "matched_province", detail = sprintf("%s candidate rows", nrow(candidates))))
+  }
+  list(province = "", prefecture = "", county = "", level = "", status = "ambiguous", detail = sprintf("%s candidate rows", nrow(candidates)))
+}
+
+goecode_tool_generalcrosswalk_promote <- function(input, config, ppc, address, insured, target_resolution, threshold) {
+  candidate_rows <- rbind(ppc, address, insured)
+  candidates_by_entry <- split(candidate_rows, candidate_rows$Entry_Index)
+  mapped_rows <- vector("list", nrow(input))
+  review_rows <- list()
+  warning_rows <- list()
+
+  for (i in seq_len(nrow(input))) {
+    entry_index <- input$Entry_Index[[i]]
+    row_candidates <- candidates_by_entry[[as.character(entry_index)]]
+    if (is.null(row_candidates)) {
+      row_candidates <- candidate_rows[0, , drop = FALSE]
+    }
+    candidates <- row_candidates[nzchar(row_candidates$candidate_level), , drop = FALSE]
+    diagnostics <- row_candidates[!nzchar(row_candidates$candidate_level) & nzchar(row_candidates$candidate_status), , drop = FALSE]
+    result <- goecode_tool_generalcrosswalk_promote_row(entry_index, candidates, diagnostics, target_resolution, threshold)
+    mapped_rows[[i]] <- result$mapped
+    if (result$review) {
+      review_rows[[length(review_rows) + 1L]] <- cbind(input[i, , drop = FALSE], result$review_row, stringsAsFactors = FALSE)
+    }
+    if (nzchar(result$mapped$mapping_warning)) {
+      warning_rows[[length(warning_rows) + 1L]] <- data.frame(
+        Entry_Index = entry_index,
+        warning = result$mapped$mapping_warning,
+        detail = result$mapped$mapping_conflict_detail,
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+      )
+    }
+  }
+
+  mapped <- do.call(rbind, mapped_rows)
+  review <- if (length(review_rows) == 0) {
+    goecode_tool_generalcrosswalk_empty_review_frame(input)
+  } else {
+    do.call(rbind, review_rows)
+  }
+  warnings <- if (length(warning_rows) == 0) {
+    data.frame(Entry_Index = character(), warning = character(), detail = character(), stringsAsFactors = FALSE, check.names = FALSE)
+  } else {
+    do.call(rbind, warning_rows)
+  }
+  list(mapped = mapped, review = review, warnings = warnings)
+}
+
+goecode_tool_generalcrosswalk_promote_row <- function(entry_index, candidates, diagnostics, target_resolution, threshold) {
+  diagnostic_warning <- ""
+  diagnostic_detail <- ""
+  if (nrow(diagnostics) > 0) {
+    diagnostic_warning <- "method_diagnostic"
+    diagnostic_detail <- paste(sprintf("%s:%s:%s", diagnostics$method, diagnostics$candidate_status, diagnostics$candidate_detail), collapse = "; ")
+  }
+
+  if (nrow(candidates) == 0) {
+    status <- if (nzchar(diagnostic_warning)) "unresolved_method_diagnostic" else "unresolved_no_candidate"
+    detail <- if (nzchar(diagnostic_detail)) diagnostic_detail else "No v1 candidate was generated."
+    mapped <- goecode_tool_generalcrosswalk_mapped_row(entry_index, "", "", "", "", "", 0, status, diagnostic_warning, detail)
+    return(list(mapped = mapped, review = TRUE, review_row = goecode_tool_generalcrosswalk_review_row(mapped, "manual_no_candidate", detail)))
+  }
+
+  candidates$level_rank <- vapply(candidates$candidate_level, goecode_tool_generalcrosswalk_level_rank, numeric(1))
+  candidates$method_rank <- match(candidates$method, c("ppc", "address", "insured"))
+  candidates <- candidates[order(candidates$priority, -candidates$level_rank, candidates$method_rank), , drop = FALSE]
+  winner <- candidates[1, , drop = FALSE]
+  final <- winner
+  warning <- ""
+  detail <- character()
+
+  if (nrow(candidates) > 1) {
+    for (j in 2:nrow(candidates)) {
+      other <- candidates[j, , drop = FALSE]
+      if (goecode_tool_generalcrosswalk_compatible(final, other)) {
+        if (goecode_tool_generalcrosswalk_level_rank(other$candidate_level) > goecode_tool_generalcrosswalk_level_rank(final$candidate_level)) {
+          final <- other
+        }
+      } else {
+        warning <- "conflict_resolved_by_priority"
+        detail <- c(detail, sprintf("%s=%s/%s/%s", other$method, other$candidate_province, other$candidate_prefecture, other$candidate_county))
+      }
+    }
+  }
+  if (nzchar(diagnostic_warning)) {
+    warning <- paste(c(warning, diagnostic_warning), collapse = ";")
+    warning <- gsub("^;|;$", "", warning)
+    detail <- c(detail, diagnostic_detail)
+  }
+
+  confidence <- as.numeric(final$confidence_score)
+  if (nzchar(warning)) confidence <- max(0, confidence - 15)
+  status <- paste0("mapped_", tolower(final$candidate_level))
+  target_missed <- goecode_tool_generalcrosswalk_level_rank(final$candidate_level) < goecode_tool_generalcrosswalk_level_rank(target_resolution)
+  if (target_missed) {
+    warning <- paste(c(warning, "below_target_resolution"), collapse = ";")
+    warning <- gsub("^;|;$", "", warning)
+  }
+
+  mapped <- goecode_tool_generalcrosswalk_mapped_row(
+    entry_index = entry_index,
+    province = final$candidate_province,
+    prefecture = final$candidate_prefecture,
+    county = final$candidate_county,
+    resolution = final$candidate_level,
+    method = final$method,
+    confidence = confidence,
+    status = status,
+    warning = warning,
+    detail = paste(detail, collapse = "; ")
+  )
+
+  review <- confidence < threshold || target_missed
+  reason <- character()
+  if (confidence < threshold) reason <- c(reason, "manual_low_confidence")
+  if (target_missed) reason <- c(reason, "manual_below_target_resolution")
+  if (nzchar(warning) && confidence < threshold) reason <- c(reason, "manual_warning")
+  if (length(reason) == 0) reason <- "manual_review"
+
+  list(mapped = mapped, review = review, review_row = goecode_tool_generalcrosswalk_review_row(mapped, paste(unique(reason), collapse = ";"), mapped$mapping_conflict_detail))
+}
+
+goecode_tool_generalcrosswalk_candidate <- function(entry_index, method, province, prefecture, county, level, status, priority, confidence, terms, detail, count, source) {
+  data.frame(
+    Entry_Index = as.character(entry_index),
+    method = method,
+    candidate_province = province,
+    candidate_prefecture = prefecture,
+    candidate_county = county,
+    candidate_level = level,
+    candidate_status = status,
+    priority = priority,
+    confidence_score = confidence,
+    matched_terms = terms,
+    candidate_detail = detail,
+    candidate_count = count,
+    source_columns = source,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
+goecode_tool_generalcrosswalk_empty_candidate <- function(entry_index, method, status = "", detail = "") {
+  goecode_tool_generalcrosswalk_candidate(entry_index, method, "", "", "", "", status, 99, 0, "", detail, 0, "")
+}
+
+goecode_tool_generalcrosswalk_candidate_frame <- function(rows) {
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+goecode_tool_generalcrosswalk_mapped_row <- function(entry_index, province, prefecture, county, resolution, method, confidence, status, warning, detail) {
+  data.frame(
+    Entry_Index = as.character(entry_index),
+    mapped_province = province,
+    mapped_prefecture = prefecture,
+    mapped_county = county,
+    mapped_resolution = resolution,
+    mapping_method = method,
+    confidence_score = confidence,
+    mapping_status = status,
+    mapping_warning = warning,
+    mapping_conflict_detail = detail,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
+goecode_tool_generalcrosswalk_review_row <- function(mapped, reason, detail) {
+  data.frame(
+    proposed_mapped_province = mapped$mapped_province,
+    proposed_mapped_prefecture = mapped$mapped_prefecture,
+    proposed_mapped_county = mapped$mapped_county,
+    proposed_resolution = mapped$mapped_resolution,
+    confidence_score = mapped$confidence_score,
+    manual_review_reason = reason,
+    manual_review_detail = detail,
+    winning_method = mapped$mapping_method,
+    mapping_status = mapped$mapping_status,
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+}
+
+goecode_tool_generalcrosswalk_empty_review_frame <- function(input) {
+  review_cols <- data.frame(
+    proposed_mapped_province = character(),
+    proposed_mapped_prefecture = character(),
+    proposed_mapped_county = character(),
+    proposed_resolution = character(),
+    confidence_score = character(),
+    manual_review_reason = character(),
+    manual_review_detail = character(),
+    winning_method = character(),
+    mapping_status = character(),
+    stringsAsFactors = FALSE,
+    check.names = FALSE
+  )
+  input[0, , drop = FALSE][, names(input), drop = FALSE]
+  cbind(input[0, , drop = FALSE], review_cols, stringsAsFactors = FALSE)
+}
+
+goecode_tool_generalcrosswalk_mapped_output <- function(input, mapped) {
+  mapped_cols <- mapped[, setdiff(names(mapped), "Entry_Index"), drop = FALSE]
+  out <- cbind(input, mapped_cols, stringsAsFactors = FALSE)
+  rownames(out) <- NULL
+  out
+}
+
+goecode_tool_generalcrosswalk_compatible <- function(a, b) {
+  pairs <- list(
+    c(a$candidate_province, b$candidate_province),
+    c(a$candidate_prefecture, b$candidate_prefecture),
+    c(a$candidate_county, b$candidate_county)
+  )
+  all(vapply(pairs, function(x) !nzchar(x[[1]]) || !nzchar(x[[2]]) || identical(x[[1]], x[[2]]), logical(1)))
+}
+
+goecode_tool_generalcrosswalk_base_confidence <- function(method, level, zone = FALSE) {
+  level <- as.character(level)
+  score <- switch(
+    method,
+    ppc = switch(level, County = 95, Prefecture = 88, Province = 80, 0),
+    address = switch(level, County = 86, Prefecture = 75, Province = 65, 0),
+    insured = switch(level, County = 72, Prefecture = 62, Province = 55, 0),
+    0
+  )
+  if (zone) min(100, score + 5) else score
+}
+
+goecode_tool_generalcrosswalk_level_rank <- function(level) {
+  switch(as.character(level), Province = 1, Prefecture = 2, County = 3, 0)
+}
+
+goecode_tool_generalcrosswalk_has_value <- function(value) {
+  value <- trimws(goecode_tool_utf8_clean(value))
+  nzchar(value) & !tolower(value) %in% c("null", "na", "n/a", "nan")
+}
+
+goecode_tool_generalcrosswalk_norm <- function(value) {
+  value <- goecode_tool_utf8_clean(value)
+  value[is.na(value)] <- ""
+  value <- trimws(value)
+  value <- gsub("中国", "", value, fixed = TRUE)
+  value <- gsub("[[:space:][:punct:]]+", "", value)
+  value <- gsub("（|）|\\(|\\)|【|】|\\[|\\]", "", value)
+  Encoding(value) <- "UTF-8"
+  value
+}
+
+goecode_tool_utf8_clean <- function(value) {
+  value <- as.character(value)
+  value[is.na(value)] <- ""
+  cleaned <- iconv(value, from = "UTF-8", to = "UTF-8", sub = "")
+  fallback <- is.na(cleaned)
+  if (any(fallback)) {
+    cleaned[fallback] <- iconv(value[fallback], from = "", to = "UTF-8", sub = "")
+  }
+  cleaned[is.na(cleaned)] <- ""
+  Encoding(cleaned) <- "UTF-8"
+  cleaned
 }
